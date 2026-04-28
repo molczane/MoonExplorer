@@ -29,7 +29,7 @@ expect fun MoonViewport(
 
 `androidMain` actual: wraps a `SurfaceView` in `AndroidView { ... }`, runs a `Choreographer.FrameCallback`, reads `state` per frame, pushes to Filament via JNI.
 
-`iosMain` actual: wraps a Swift `MoonRendererViewController` in `UIKitViewController { factory = { MoonRendererViewController() } }`, runs a `CADisplayLink`, reads `state` per frame, pushes to Filament via direct C++ interop.
+`iosMain` actual: uses CMP's `UIKitViewController` interop with a closure-injection bridge (see ADR-0002 §"Bridge pattern: closure injection from Swift"). The iOS app provides the `UIViewController` instance via `MoonRendererProvider.factory`; `update` calls `MoonRendererProvider.applyCamera` / `applySunDirection` / `applyMoonRotation` to push state per frame; the Swift side runs `CADisplayLink` and Filament internally.
 
 ### State delivery model
 

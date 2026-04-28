@@ -14,7 +14,7 @@ All paths relative to `MoonExplorer/` repo root.
 ## Phase 1: Setup
 
 - [ ] **T001** [P] Add Filament version + library aliases to `gradle/libs.versions.toml`
-  - `filament = "1.71.x"` under `[versions]` (pin exact when verified)
+  - `filament = "1.71.1"` under `[versions]`
   - `filament-android` and `filament-utils-android` under `[libraries]`
   - _Requirements: ADR-0001, ADR-0002, tech-stack.md_
 
@@ -24,7 +24,7 @@ All paths relative to `MoonExplorer/` repo root.
   - _Requirements: ADR-0001, FR-005_
 
 - [ ] **T003** [P] Vendor `matc` binary under `tools/matc/`
-  - Download from Filament release tarball matching the pinned version
+  - Download from Filament 1.71.1 release tarball (Mac + Linux variants)
   - Include `LICENSE` note (Apache 2.0)
   - _Requirements: ADR-0001, FR-005_
 
@@ -34,18 +34,24 @@ All paths relative to `MoonExplorer/` repo root.
   - Wired as a dependency of Compose resource processing
   - _Requirements: FR-005_
 
-- [ ] **T005** Verify `Filament.podspec` simulator-arm64 status
-  - Read [`Filament.podspec`](https://github.com/google/filament/blob/main/ios/CocoaPods/Filament.podspec) directly
-  - Document outcome in `ai-docs/decisions/0002-filament-ios-distribution.md` under a new "## Verification — YYYY-MM-DD" section
-  - If sim-arm64 missing: pick mitigation (build-from-source / Rosetta / device-only); file follow-up ADR if needed
-  - _Requirements: ADR-0002, SC-004_
+- [ ] **T005** ~~Verify `Filament.podspec` simulator-arm64 status~~ ✅ Resolved 2026-04-28
+  - **Outcome**: arm64 simulator is excluded by the podspec (`EXCLUDED_ARCHS[sdk=iphonesimulator*] = arm64`). Mitigation = Rosetta on Apple Silicon Macs. See ADR-0002 §"Verification".
+  - No further action; this slot remains in the task list as a checkpoint history.
 
-- [ ] **T006** [P] Initialize `iosApp/Podfile` with `pod 'Filament', '~> 1.71.x'` (matching the pinned version from T001)
+- [ ] **T006** [P] Initialize `iosApp/Podfile` with the locked Filament subspecs
+  - `pod 'Filament/filament', '~> 1.71.1'`
+  - `pod 'Filament/ktxreader', '~> 1.71.1'`
   - Run `pod install` in `iosApp/`; verify `iosApp.xcworkspace` is generated
   - Add `iosApp/Pods/` to `.gitignore` if not already
   - _Requirements: ADR-0002_
 
-**Checkpoint**: `./gradlew :androidApp:assembleDebug` builds with Filament on classpath; `pod install` succeeds in `iosApp/`.
+- [ ] **T007** [P] Pre-Phase-0 smoke test of `Shared.framework` inside the new CocoaPods workspace
+  - With T006 done but no Filament code yet: build `iosApp.xcworkspace` from Xcode
+  - Verify the existing wizard "Click me!" screen still launches on simulator (Rosetta) and device
+  - Confirms the `embedAndSignAppleFrameworkForXcode` build phase still works inside a workspace
+  - _Requirements: ADR-0002_
+
+**Checkpoint**: `./gradlew :androidApp:assembleDebug` builds with Filament on classpath; `pod install` succeeds in `iosApp/`; existing CMP shell still runs on iOS via the workspace.
 
 ---
 
@@ -142,47 +148,76 @@ All paths relative to `MoonExplorer/` repo root.
 
 **Checkpoint (Android)**: `./gradlew :androidApp:installDebug` then launch on Pixel 6 — see a 3D textured sphere within 2 seconds. SC-001 partially met.
 
-### Implementation for User Story 1 (iOS)
+### Implementation for User Story 1 (iOS — closure-injection bridge)
 
-> Block on T005 verification before starting these tasks.
+> Block on T005 verification (already resolved) and T007 smoke test before starting.
+> See **ADR-0002 §"Bridge pattern: closure injection from Swift"** for the design.
 
-- [ ] **T034** [US1] Author `iosApp/iosApp/MoonRendererBridge.h` — Objective-C interface
-  - Methods: `init`, `setCamera(yaw, pitch, distance)`, `setSunDirection(x, y, z)`, `loadAssets(albedoBytes, normalBytes, materialBytes, sphereVertices, sphereIndices)`, `pause`, `resume`, `dispose`
-  - All types are ObjC-compatible (`NSData`, `float`, `void`)
+- [ ] **T034** [US1] Implement `iosMain/render/MoonRendererProvider.kt`
+  - Kotlin `object` (singleton) in `:shared/iosMain` with mutable closure properties:
+    - `var factory: () -> UIViewController = { UIViewController() }`
+    - `var applyCamera: (yawRad: Float, pitchRad: Float, distance: Float) -> Unit`
+    - `var applySunDirection: (x: Float, y: Float, z: Float) -> Unit`
+    - `var applyMoonRotation: (rotationRad: Float) -> Unit`
+    - `var applyAssets: (albedo: ByteArray, normal: ByteArray, material: ByteArray) -> Unit`
+    - `var dispose: () -> Unit`
+  - All defaults are no-ops or `{ UIViewController() }` so commonMain works without iOS-app wiring (e.g., Compose Previews, tests)
+  - _Requirements: ADR-0002 §"Bridge pattern", ADR-0003_
+
+- [ ] **T035** [US1] Implement `iosMain/render/MoonViewport.ios.kt`
+  - `actual @Composable fun MoonViewport(state: MoonRenderState, modifier: Modifier)`
+  - `val vc = remember { MoonRendererProvider.factory() }`
+  - `UIKitViewController(factory = { vc }, update = { ... }, onRelease = { MoonRendererProvider.dispose() }, modifier = modifier)`
+  - In `update`: forward `state.cameraYawRad/pitchRad/distance` to `applyCamera`; `state.sunDirection.{x,y,z}` to `applySunDirection`; `state.moonRotationRad` to `applyMoonRotation`
+  - _Requirements: FR-001, FR-002, FR-003, FR-004, FR-006, FR-007, ADR-0002, ADR-0003_
+
+- [ ] **T036** [US1] Implement `iosMain/render/MoonAssets.kt`
+  - `suspend fun loadAndPushBundledAssets()` reads:
+    - `Res.readBytes("files/materials/moon.filamat")`
+    - `Res.readBytes("files/textures/moon_albedo_2k.ktx2")`
+    - `Res.readBytes("files/textures/moon_normal_2k.ktx2")`
+  - Calls `MoonRendererProvider.applyAssets(albedo, normal, material)`
+  - Top-level function so Swift sees it as `MoonAssetsKt.loadAndPushBundledAssets()`
+  - _Requirements: FR-001, FR-008, ADR-0004_
+
+- [ ] **T037** [US1] Author `iosApp/iosApp/MoonRenderer.h` — Objective-C interface (internal to iosApp; **not** exposed to Kotlin)
+  - Methods: `init`, `setCameraYaw:pitch:distance:`, `setSunDirectionX:y:z:`, `setMoonRotation:`, `loadAssetsAlbedo:normal:material:`, `pause`, `resume`, `dispose`
+  - All types ObjC-compatible (`NSData`, `float`, `void`)
   - _Requirements: ADR-0002_
 
-- [ ] **T035** [US1] Implement `iosApp/iosApp/MoonRendererBridge.mm` — Objective-C++ wrapper around Filament's C++ API
-  - C++ `<filament/...>` includes hidden behind ObjC interface so Swift sees only ObjC types
-  - Mirrors the Filament object graph from §1 of `filament-cmp-integration.md`
-  - _Requirements: ADR-0002_
+- [ ] **T038** [US1] Implement `iosApp/iosApp/MoonRenderer.mm` — Objective-C++ wrapping Filament's C++ API
+  - `<filament/Engine.h>` etc. hidden behind ObjC interface so Swift sees only ObjC types
+  - Mirrors the Filament object graph from `ai-docs/research/filament-cmp-integration.md` §1
+  - Engine creation, scene setup, render loop coupling, resource teardown
+  - _Requirements: ADR-0001, ADR-0002, FR-006_
 
-- [ ] **T036** [US1] Implement `iosApp/iosApp/MoonRendererView.swift` — `UIView` subclass with `+ (Class)layerClass = CAMetalLayer`
-  - `initializeMetalLayer()` sets pixel format `MTLPixelFormatBGRA8Unorm` and drawable size
-  - _Requirements: FR-001, ADR-0002_
+- [ ] **T039** [US1] Implement `iosApp/iosApp/MoonRendererView.swift` and `MoonRendererViewController.swift`
+  - **`MoonRendererView`**: `UIView` subclass with `+ (Class)layerClass = CAMetalLayer`. `initializeMetalLayer()` sets pixel format `MTLPixelFormatBGRA8Unorm` and drawable size from bounds × contentScaleFactor.
+  - **`MoonRendererViewController`**: `UIViewController` hosting a `MoonRendererView`, owns a `MoonRenderer` instance. On `viewDidLoad`: call `renderer.init` with `view.layer`. Drives a `CADisplayLink` render loop calling `renderer` methods. Public methods exposed to Swift callers (used by `iOSApp.swift`'s closure wiring): `setCamera(yaw:pitch:distance:)`, `setSunDirection(x:y:z:)`, `setMoonRotation(_:)`, `loadAssets(albedo:normal:material:)`, `tearDown()`. On `viewWillDisappear`: pause CADisplayLink. On `dealloc`: `renderer.dispose()`.
+  - _Requirements: FR-001, FR-002, FR-003, FR-004, FR-006, FR-007, ADR-0002_
 
-- [ ] **T037** [US1] Implement `iosApp/iosApp/MoonRendererViewController.swift`
-  - Hosts `MoonRendererView`, owns the `MoonRendererBridge`
-  - On `viewDidLoad`: calls `bridge.init` with `view.layer`, `bridge.loadAssets(...)`
-  - Drives a `CADisplayLink` render loop; reads StateFlow snapshots via the Kotlin/Native bridge each frame; calls `bridge.setCamera/setSunDirection`
-  - On `viewWillDisappear` / `dealloc`: `bridge.dispose()`
-  - _Requirements: FR-001, FR-002, FR-003, FR-004, FR-006, FR-007_
+- [ ] **T040** [US1] Wire `MoonRendererProvider` closures from `iosApp/iosApp/iOSApp.swift`
+  - Add `KotlinByteArray+Data.swift` extension converting `KotlinByteArray` → `Data`.
+  - In `iOSApp.init()`:
+    - Create one `MoonRendererViewController` instance.
+    - Set `MoonRendererProvider.shared.factory = { renderer }` — captures the instance.
+    - Set `applyCamera`/`applySunDirection`/`applyMoonRotation` to forward floats to the corresponding renderer methods.
+    - Set `applyAssets = { albedo, normal, material in renderer.loadAssets(albedo: albedo.toData(), normal: normal.toData(), material: material.toData()) }`.
+    - Set `dispose = { renderer.tearDown() }`.
+    - Kick off `Task { await MoonAssetsKt.loadAndPushBundledAssets() }` to push bundled assets at startup.
+  - _Requirements: FR-001, FR-008, ADR-0002, ADR-0003, ADR-0004_
 
-- [ ] **T038** [US1] Implement `iosMain/render/MoonViewport.ios.kt`
-  - `UIKitViewController { factory = { MoonRendererViewController() } }`
-  - `update = { vc -> /* push state via bridge — but the VC reads StateFlow itself, so this is a no-op or just a `setNeedsDisplay()` */ }`
-  - _Requirements: FR-001, ADR-0003_
-
-**Checkpoint (iOS)**: `./gradlew :shared:embedAndSignAppleFrameworkForXcode` then build+run from Xcode workspace on iPhone 12 — see the same 3D textured sphere. SC-001 fully met.
+**Checkpoint (iOS)**: `./gradlew :shared:embedAndSignAppleFrameworkForXcode` then build+run from Xcode workspace on iPhone 12 (or simulator under Rosetta) — see the same 3D textured sphere. SC-001 fully met.
 
 ---
 
 ## Phase 4: User Story 2 — Direct manipulation gestures (P1)
 
-- [ ] **T040** [US2] Add `Modifier.pointerInput { detectTransformGestures { ... } }` in `MoonExplorerScreen` driving `viewModel.onDrag(dx, dy, ...)` and `viewModel.onPinch(zoom)`
+- [ ] **T041** [US2] Add `Modifier.pointerInput { detectTransformGestures { ... } }` in `MoonExplorerScreen` driving `viewModel.onDrag(dx, dy, ...)` and `viewModel.onPinch(zoom)`
   - Read viewport size via `Modifier.onSizeChanged` to provide `viewportH` to `onDrag`
   - _Requirements: FR-002, FR-003_
 
-- [ ] **T041** [US2] Verify on Pixel 6 + iPhone 12: drag rotates Moon smoothly; pinch zooms; clamps work; 60 FPS sustained
+- [ ] **T042** [US2] Verify on Pixel 6 + iPhone 12: drag rotates Moon smoothly; pinch zooms; clamps work; 60 FPS sustained
   - _Requirements: FR-002, FR-003, SC-002_
 
 **Checkpoint**: gestures work on both platforms. Visual smoothness verified at 60 FPS via on-device profiler (Android Studio Profiler / Xcode Frame Capture).
@@ -203,6 +238,7 @@ All paths relative to `MoonExplorer/` repo root.
 
 - [ ] **T060** [US4] Add a debug toggle in `MoonExplorerScreen` (e.g., long-press or developer menu) to switch between two bundled placeholder textures
   - Bundle a second placeholder texture: `textures/moon_albedo_2k_alt.ktx2` (different test pattern)
+  - On Android: re-bind texture in MoonHost. On iOS: extend `MoonRendererProvider` with `applyAlbedoSwap: (ByteArray) -> Unit` and call from the toggle
   - _Requirements: ADR-0004_
 
 - [ ] **T061** [US4] Verify both textures render correctly on both platforms without renderer restart
@@ -217,17 +253,17 @@ All paths relative to `MoonExplorer/` repo root.
 - [ ] **T090** Document any deviations from ADRs in either a follow-up ADR or an update to `architecture.md` / `tech-stack.md`
   - _Requirements: agent-runbook.md_
 
-- [ ] **T091** Update `ai-docs/decisions/0002-filament-ios-distribution.md` with the verification outcome from T005
-  - Append a "## Verification — YYYY-MM-DD" section
-  - _Requirements: ADR-0002, SC-004_
+- [ ] **T091** Add a debug-build assertion in `MoonViewport.ios.kt` that warns at first composition if `MoonRendererProvider.factory` is still the default no-op (forgot to wire from Swift)
+  - _Requirements: ADR-0002_
 
-- [ ] **T092** Add `iosApp/README.md` with `pod install` + Xcode build instructions
-  - _Requirements: agent-runbook.md_
+- [ ] **T092** Add `iosApp/README.md` with `pod install` + Rosetta + Xcode workspace build instructions
+  - Include the Rosetta toggle steps for Apple Silicon Mac developers
+  - _Requirements: ADR-0002, agent-runbook.md_
 
 - [ ] **T093** Smoke-test on real Pixel 6 + iPhone 12; record FPS, any visible issues, and resolution outcomes in `ai-docs/specs/00-renderer-spike/results.md`
   - _Requirements: SC-002, SC-003_
 
-**Final Checkpoint**: all four user stories' acceptance criteria pass on real devices. ADR-0002 verification complete. `results.md` filed.
+**Final Checkpoint**: all four user stories' acceptance criteria pass on real devices. `results.md` filed.
 
 ---
 
@@ -237,7 +273,8 @@ All paths relative to `MoonExplorer/` repo root.
 |---|---|
 | T001 → T002, T006 | Versions defined first |
 | T003 → T004 | matc binary present before the Gradle task that runs it |
-| T005 → T034..T038 | Verify simulator-arm64 before iOS-side work begins |
+| T006 → T007 | Podfile installed before workspace smoke test |
+| T007 → T034..T040 | iOS workspace verified working before Filament-on-iOS work begins |
 | Phase 1 → Phase 2 | Build infrastructure before code |
 | Phase 2 → Phase 3 | Interfaces defined before implementations |
 | Phase 3 (Android) ⊥ Phase 3 (iOS) | Once T030+T031 land, two engineers can work in parallel |
@@ -248,9 +285,9 @@ All paths relative to `MoonExplorer/` repo root.
 
 Two agents in parallel:
 - **Agent A (Android)**: T032 → T033 → Checkpoint (Android)
-- **Agent B (iOS)**: T034 → T035 → T036 → T037 → T038 → Checkpoint (iOS)
+- **Agent B (iOS)**: T034 → T035 → T036 → T037 → T038 → T039 → T040 → Checkpoint (iOS)
 
-The shared state contract (`MoonRenderState`, `MoonViewport`) is locked by Phase 2.
+The shared state contract (`MoonRenderState`, `MoonViewport`) is locked by Phase 2. The closure-injection bridge contract (`MoonRendererProvider`'s closure properties) is locked by T034 — Swift side (T037–T040) and iOS Compose side (T035–T036) can thereafter work concurrently against that interface.
 
 ## Implementation Strategy
 
@@ -263,5 +300,5 @@ The shared state contract (`MoonRenderState`, `MoonViewport`) is locked by Phase
 ## Notes
 
 - This is a **spike**. We pay down debt later: real NASA textures (`02-moon-renderer-mvp`), real sun joystick (`04-sun-control`), site markers + fly-to (`01-app-shell` + `03-sites-and-flyto`), polish (`05-polish`), Koog (`06-koog-agent`).
-- If anything in Phase 3 takes more than 2 days per platform, **stop and reconsider the route**. ADR-0002's "Risk and Fallback" section lists alternatives (route a/b/c/d).
+- If anything in Phase 3 takes more than 2 days per platform, **stop and reconsider the route**. ADR-0002's "Alternatives rejected" section lists fallbacks (route a/b/c/d).
 - Don't relax acceptance criteria silently. If FR-001 (2-second startup) is missed, raise it — don't quietly stretch the budget.
