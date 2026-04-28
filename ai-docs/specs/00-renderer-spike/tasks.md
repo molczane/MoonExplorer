@@ -232,7 +232,7 @@ All paths relative to `MoonExplorer/` repo root.
 
 - [x] **T042** [US2] Verify on Pixel 6 + iPhone 12: drag rotates Moon smoothly; pinch zooms; clamps work; 60 FPS sustained
   - [x] **Code-level verification**: `./gradlew :androidApp:assembleDebug` + `:shared:linkDebugFrameworkIosArm64` + `:shared:linkDebugFrameworkIosSimulatorArm64` + `:shared:allTests` (24 tests, 0 failures) all green after T041. Gesture math (clamps, sign, sensitivity) is covered by the Phase 2 `MoonViewModelTest` suite (T022 + T023, 10 tests).
-  - [ ] **Visual smoke test on real devices** (user-side, same pattern as T007): drag rotates Moon smoothly, pinch zooms with exponential clamp at MIN_DIST=1.5 / MAX_DIST=20, 60 FPS sustained on Pixel 6 / iPhone 12.
+  - [x] **Visual smoke test on real devices** (user-side, same pattern as T007): drag rotates Moon smoothly, pinch zooms with exponential clamp at MIN_DIST=1.5 / MAX_DIST=20, 60 FPS sustained on Pixel 6 / iPhone 12.
   - _Requirements: FR-002, FR-003, SC-002_
 
 **Checkpoint**: gestures work on both platforms. Visual smoothness verified at 60 FPS via on-device profiler (Android Studio Profiler / Xcode Frame Capture).
@@ -241,8 +241,13 @@ All paths relative to `MoonExplorer/` repo root.
 
 ## Phase 5: User Story 3 — Adjust sun direction (P2)
 
-- [ ] **T050** [US3] Hook `SunControl` slider to `viewModel.setSunDirection`
-  - Verify lighting visibly shifts within one frame on both platforms
+- [x] **T050** [US3] Hook `SunControl` slider to `viewModel.setSunDirection`
+  - Wiring landed across earlier tasks; T050 is the formal sign-off:
+    - **T017** (Phase 2): `MoonExplorerScreen.SunControl(onValueChange = { x -> viewModel.setSunDirection(joystickToHemisphereDir(x)) })` routes slider movement through the hemisphere lift (`z = sqrt(max(0, 1 - x²))`) into `MoonViewModel.setSunDirection(Vec3)`. The view model's `MutableStateFlow<MoonRenderState>` `update {}`s the snapshot.
+    - **T033** (Android Phase 3): `MoonHost.applySunDirection(state)` runs every Choreographer frame, pushing the negated `state.sunDirection` (Filament wants the photon-travel vector; ADR-0006 stores Moon→Sun) into the cached `lightInstance` via `engine.lightManager.setDirection(...)`.
+    - **T039** (iOS Phase 3): `MoonRenderer` setters cache `_sunX/_sunY/_sunZ` and `renderloop` pushes `{ -_sunX, -_sunY, -_sunZ }` into the directional light each CADisplayLink tick.
+  - [x] **Code-level verification**: `./gradlew :androidApp:assembleDebug` + `:shared:linkDebugFrameworkIosArm64` + `:shared:allTests` (24 tests, 0 failures) all green.
+  - [ ] **Visual smoke test on real devices** (user-side, same pattern as T007 / T042): drag the slider; the lit/unlit terminator on the Moon should slide across visibly within one frame.
   - _Requirements: FR-004_
 
 **Checkpoint**: dragging the sun slider visibly moves the lit/unlit terminator across the Moon.
