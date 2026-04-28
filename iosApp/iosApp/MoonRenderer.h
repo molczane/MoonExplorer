@@ -30,6 +30,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setSunDirectionX:(float)x y:(float)y z:(float)z;
 - (void)setMoonRotation:(float)rotation;
 - (void)loadAssetsAlbedo:(NSData *)albedo normal:(NSData *)normal material:(NSData *)material;
+/** Phase 6 (T060). Decode + upload the alt albedo PNG once at startup so
+ *  the variant toggle below can rebind without going back to disk. */
+- (void)loadAltAlbedo:(NSData *)albedo;
+/** Phase 6 (T060). 0 = primary albedo, 1 = alt. Idempotent — only rebinds
+ *  the material's `albedo` sampler when the variant actually changes. */
+- (void)setAlbedoVariant:(int)variant;
 - (void)resize:(CGSize)drawableSize;
 - (void)pause;
 - (void)resume;

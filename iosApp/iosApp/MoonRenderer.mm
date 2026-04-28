@@ -203,8 +203,10 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
 
     Material* _material;
     MaterialInstance* _materialInstance;
-    Texture* _albedoTex;
+    Texture* _albedoTex;       // primary
+    Texture* _albedoTexAlt;    // alt — Phase 6 (T060) swap target
     Texture* _normalTex;
+    int _currentAlbedoVariant;
     VertexBuffer* _vertexBuffer;
     IndexBuffer* _indexBuffer;
     uint32_t _indexCount;
@@ -238,6 +240,8 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     _materialBuilt = NO;
     _meshBuilt = NO;
     _indexCount = 0;
+    _albedoTexAlt = nullptr;
+    _currentAlbedoVariant = 0;
 
     // Initial state matches MoonRenderState defaults.
     _yaw = 0.0f;
@@ -334,6 +338,7 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     if (_indexBuffer)    { _engine->destroy(_indexBuffer);    _indexBuffer    = nullptr; }
     if (_vertexBuffer)   { _engine->destroy(_vertexBuffer);   _vertexBuffer   = nullptr; }
     if (_albedoTex)      { _engine->destroy(_albedoTex);      _albedoTex      = nullptr; }
+    if (_albedoTexAlt)   { _engine->destroy(_albedoTexAlt);   _albedoTexAlt   = nullptr; }
     if (_normalTex)      { _engine->destroy(_normalTex);      _normalTex      = nullptr; }
     if (_materialInstance) { _engine->destroy(_materialInstance); _materialInstance = nullptr; }
     if (_material)       { _engine->destroy(_material);       _material       = nullptr; }
@@ -386,6 +391,50 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
 
 - (void)setMoonRotation:(float)rotation {
     _moonRotation = rotation;
+}
+
+- (void)loadAltAlbedo:(NSData *)albedo {
+    if (_engine == nullptr || albedo.length == 0) return;
+    if (_albedoTexAlt != nullptr) return; // hot-reload deferred to 02-moon-renderer-mvp
+
+    uint32_t w = 0, h = 0;
+    NSData* rgba = decodePngToRgba8(albedo, &w, &h);
+    if (!rgba) return;
+
+    _albedoTexAlt = Texture::Builder()
+        .width(w).height(h).levels(1)
+        .sampler(Texture::Sampler::SAMPLER_2D)
+        .format(Texture::InternalFormat::SRGB8_A8)
+        .build(*_engine);
+    if (_albedoTexAlt) {
+        const size_t size = (size_t)w * (size_t)h * 4;
+        void* keep = (__bridge_retained void*)rgba;
+        Texture::PixelBufferDescriptor pbd(
+            rgba.bytes, size,
+            Texture::Format::RGBA, Texture::Type::UBYTE,
+            &releaseNsData, keep);
+        _albedoTexAlt->setImage(*_engine, 0, std::move(pbd));
+    }
+}
+
+- (void)setAlbedoVariant:(int)variant {
+    if (_engine == nullptr || _materialInstance == nullptr) return;
+    if (variant != 0 && variant != 1) return;
+    if (variant == _currentAlbedoVariant) return;
+
+    Texture* target = (variant == 0) ? _albedoTex : _albedoTexAlt;
+    if (target == nullptr) return; // alt not yet uploaded; ignore
+
+    // Same sampler config as the initial bind in loadAssetsAlbedo:
+    // REPEAT in U (longitude wraps), CLAMP_TO_EDGE in V (poles).
+    TextureSampler sampler(
+        TextureSampler::MinFilter::LINEAR,
+        TextureSampler::MagFilter::LINEAR,
+        TextureSampler::WrapMode::REPEAT,
+        TextureSampler::WrapMode::CLAMP_TO_EDGE,
+        TextureSampler::WrapMode::CLAMP_TO_EDGE);
+    _materialInstance->setParameter("albedo", target, sampler);
+    _currentAlbedoVariant = variant;
 }
 
 - (void)loadAssetsAlbedo:(NSData *)albedo

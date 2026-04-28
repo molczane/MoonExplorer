@@ -17,4 +17,11 @@ data class MoonRenderState(
     val sunDirection: Vec3 = Vec3.FORWARD,   // (0, 0, 1) — sub-Earth point lit
     val moonRotationRad: Float = 0f,
     val highlightedSiteId: String? = null,
+    /**
+     * Phase 0 spike asset-swap toggle (Phase 6, T060). 0 = primary albedo
+     * (rust/green/blue/red quadrants), 1 = alt albedo (CMYW). Useful to
+     * confirm the runtime texture-swap path works end-to-end before real
+     * NASA assets land in `02-moon-renderer-mvp`.
+     */
+    val albedoVariant: Int = 0,
 )

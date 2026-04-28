@@ -58,6 +58,17 @@ class MoonViewModel(initial: MoonRenderState = MoonRenderState()) {
         _state.update { it.copy(highlightedSiteId = id) }
     }
 
+    /** Phase 6 (T060) debug-only — flips the bound albedo between primary (0) and alt (1). */
+    fun toggleAlbedoVariant() {
+        _state.update { it.copy(albedoVariant = if (it.albedoVariant == 0) 1 else 0) }
+    }
+
+    /** Explicit setter; companion to [toggleAlbedoVariant]. */
+    fun setAlbedoVariant(variant: Int) {
+        if (variant != 0 && variant != 1) return
+        _state.update { it.copy(albedoVariant = variant) }
+    }
+
     companion object {
         /** Just above the surface — never enter the Moon. */
         const val MIN_DIST: Float = 1.5f

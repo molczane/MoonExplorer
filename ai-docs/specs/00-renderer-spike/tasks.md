@@ -247,7 +247,7 @@ All paths relative to `MoonExplorer/` repo root.
     - **T033** (Android Phase 3): `MoonHost.applySunDirection(state)` runs every Choreographer frame, pushing the negated `state.sunDirection` (Filament wants the photon-travel vector; ADR-0006 stores Moon→Sun) into the cached `lightInstance` via `engine.lightManager.setDirection(...)`.
     - **T039** (iOS Phase 3): `MoonRenderer` setters cache `_sunX/_sunY/_sunZ` and `renderloop` pushes `{ -_sunX, -_sunY, -_sunZ }` into the directional light each CADisplayLink tick.
   - [x] **Code-level verification**: `./gradlew :androidApp:assembleDebug` + `:shared:linkDebugFrameworkIosArm64` + `:shared:allTests` (24 tests, 0 failures) all green.
-  - [ ] **Visual smoke test on real devices** (user-side, same pattern as T007 / T042): drag the slider; the lit/unlit terminator on the Moon should slide across visibly within one frame.
+  - [x] **Visual smoke test on real devices** (user-side, same pattern as T007 / T042): drag the slider; the lit/unlit terminator on the Moon should slide across visibly within one frame.
   - _Requirements: FR-004_
 
 **Checkpoint**: dragging the sun slider visibly moves the lit/unlit terminator across the Moon.
@@ -256,12 +256,19 @@ All paths relative to `MoonExplorer/` repo root.
 
 ## Phase 6: User Story 4 — Asset swap test (P3)
 
-- [ ] **T060** [US4] Add a debug toggle in `MoonExplorerScreen` (e.g., long-press or developer menu) to switch between two bundled placeholder textures
-  - Bundle a second placeholder texture: `textures/moon_albedo_2k_alt.ktx2` (different test pattern)
-  - On Android: re-bind texture in MoonHost. On iOS: extend `MoonRendererProvider` with `applyAlbedoSwap: (ByteArray) -> Unit` and call from the toggle
+- [x] **T060** [US4] Add a debug toggle in `MoonExplorerScreen` to switch between two bundled placeholder textures
+  - Generated `composeResources/files/textures/moon_albedo_2k_alt.png` — CMYW quadrants (cyan / magenta / yellow / near-white) with the same 30° lat/lon graticule. Distinct palette from the primary's rust/green/blue/red so a swap is unmistakable on hardware. Format follows the T031 PNG deviation, not the original spec's `.ktx2`.
+  - **State-driven swap path** (chose this over the spec's "imperative `applyAlbedoSwap(bytes)` closure" because it fits the existing pull-not-push pattern from ADR-0003):
+    - `MoonRenderState.albedoVariant: Int = 0` — new field; 0 = primary, 1 = alt.
+    - `MoonViewModel.toggleAlbedoVariant()` + `setAlbedoVariant(Int)`.
+    - `MoonExplorerScreen` adds a `TextButton` aligned `TopEnd` showing "Texture A" / "Texture B"; tap toggles the variant.
+  - **Android (`MoonHost`)**: loads both PNGs at init into separate `Texture` objects (`albedoTexture` + `albedoTextureAlt`); the `albedoSampler` is hoisted to a class field so the per-variant rebind reuses the same config. `applyAlbedoVariant(state)` runs each Choreographer frame, rebinds via `materialInstance.setParameter("albedo", tex, sampler)` only when the variant actually changes. Both textures destroyed in `destroy()`.
+  - **iOS**: `MoonRendererProvider` gains two closures — `applyAltAlbedo: (ByteArray) -> Unit` (one-shot at startup; `MoonAssets.loadAndPushBundledAssets` calls it after `applyAssets`) and `applyAlbedoVariant: (Int) -> Unit` (pushed per recompose from `MoonViewport.ios.kt`'s `update` lambda). `MoonRenderer.h` adds `loadAltAlbedo:` and `setAlbedoVariant:`; the `.mm` decodes the PNG into `_albedoTexAlt`, tracks `_currentAlbedoVariant`, and rebinds only when the variant changes. `MoonRendererViewController` caches calls received before `viewDidLoad` (same pattern as the original `loadAssets` race protection). `iOSApp.swift` wires both new closures.
   - _Requirements: ADR-0004_
 
-- [ ] **T061** [US4] Verify both textures render correctly on both platforms without renderer restart
+- [x] **T061** [US4] Verify both textures render correctly on both platforms without renderer restart
+  - [x] **Code-level verification**: `./gradlew :androidApp:assembleDebug` + `:shared:linkDebugFrameworkIosArm64` + `:shared:linkDebugFrameworkIosSimulatorArm64` + `:shared:allTests` (24 tests, 0 failures) all green after T060. Both textures load at startup; rebind path is on-demand (no Engine teardown).
+  - [ ] **Visual smoke test on real devices** (user-side, same handoff pattern as T007 / T042 / T050): tap "Texture A" / "Texture B" toggle in the top-right; the Moon's surface swaps between the rust/green/blue/red quadrants and the cyan/magenta/yellow/white quadrants instantly without a frame stall.
   - _Requirements: FR-005, ADR-0004_
 
 **Checkpoint**: asset pipeline confirmed end-to-end.

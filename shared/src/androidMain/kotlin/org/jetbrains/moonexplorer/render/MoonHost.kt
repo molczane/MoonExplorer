@@ -66,8 +66,10 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     // --- Material + GPU-side asset handles ---
     private val material: Material
     private val materialInstance: MaterialInstance
-    private val albedoTexture: Texture
+    private val albedoTexture: Texture       // primary
+    private val albedoTextureAlt: Texture    // alt — Phase 6 (T060) swap target
     private val normalTexture: Texture
+    private val albedoSampler: TextureSampler
     private val vertexBuffer: VertexBuffer
     private val indexBuffer: IndexBuffer
     private val renderableEntity: Int
@@ -80,6 +82,10 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     // `getInstance` each tick (Phase 3 review #7).
     private var lightInstance: Int = 0
     private var moonTransformInstance: Int = 0
+
+    // Last-applied albedo variant. The frame callback rebinds the material's
+    // `albedo` sampler whenever `state.albedoVariant` differs (Phase 6 T060).
+    private var lastAppliedAlbedoVariant: Int = 0
 
     // --- State delivered from Compose (read each Choreographer tick) ---
     @Volatile
@@ -99,6 +105,7 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             applyCamera(state)
             applySunDirection(state)
             applyMoonRotation(state)
+            applyAlbedoVariant(state)
 
             if (renderer.beginFrame(sc, frameTimeNanos)) {
                 renderer.render(view)
@@ -123,10 +130,16 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         materialInstance = material.createInstance()
 
         val albedoBytes = runBlocking { Res.readBytes(ALBEDO_PATH) }
+        val albedoAltBytes = runBlocking { Res.readBytes(ALBEDO_ALT_PATH) }
         val normalBytes = runBlocking { Res.readBytes(NORMAL_PATH) }
         albedoTexture = uploadTexture(
             engine = engine,
             pngBytes = albedoBytes,
+            internalFormat = Texture.InternalFormat.SRGB8_A8,
+        )
+        albedoTextureAlt = uploadTexture(
+            engine = engine,
+            pngBytes = albedoAltBytes,
             internalFormat = Texture.InternalFormat.SRGB8_A8,
         )
         normalTexture = uploadTexture(
@@ -135,17 +148,18 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             internalFormat = Texture.InternalFormat.RGBA8,
         )
         // levels(1) below means we ship a single mip; pair with LINEAR (no mipmap chain).
-        val sampler = TextureSampler(
+        // U wraps around longitude; V clamps at the poles. Hoisted to a field so
+        // T060's per-variant rebind reuses the same sampler config.
+        albedoSampler = TextureSampler(
             TextureSampler.MinFilter.LINEAR,
             TextureSampler.MagFilter.LINEAR,
             TextureSampler.WrapMode.REPEAT,
         ).apply {
-            // U wraps around longitude; V clamps at the poles.
             wrapModeS = TextureSampler.WrapMode.REPEAT
             wrapModeT = TextureSampler.WrapMode.CLAMP_TO_EDGE
         }
-        materialInstance.setParameter("albedo", albedoTexture, sampler)
-        materialInstance.setParameter("normalMap", normalTexture, sampler)
+        materialInstance.setParameter("albedo", albedoTexture, albedoSampler)
+        materialInstance.setParameter("normalMap", normalTexture, albedoSampler)
 
         // --- 2. Mesh ------------------------------------------------------------------
         val mesh = UvSphere.generate(SPHERE_SEGMENTS, SPHERE_RINGS)
@@ -295,6 +309,19 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         engine.transformManager.setTransform(moonTransformInstance, matrix)
     }
 
+    /**
+     * Rebinds the material's `albedo` sampler when `state.albedoVariant`
+     * differs from what's currently bound (Phase 6 T060). Both textures stay
+     * resident in GPU memory across the swap; we only swap the binding.
+     * Filament's parameter change applies to the next `renderer.render(...)`.
+     */
+    private fun applyAlbedoVariant(state: MoonRenderState) {
+        if (state.albedoVariant == lastAppliedAlbedoVariant) return
+        val tex = if (state.albedoVariant == 0) albedoTexture else albedoTextureAlt
+        materialInstance.setParameter("albedo", tex, albedoSampler)
+        lastAppliedAlbedoVariant = state.albedoVariant
+    }
+
     private fun updateCameraProjection(width: Int, height: Int) {
         val aspect = width.toDouble() / height.coerceAtLeast(1).toDouble()
         camera.setProjection(
@@ -330,6 +357,7 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         engine.destroyMaterialInstance(materialInstance)
         engine.destroyMaterial(material)
         engine.destroyTexture(albedoTexture)
+        engine.destroyTexture(albedoTextureAlt)
         engine.destroyTexture(normalTexture)
 
         engine.destroyView(view)
@@ -449,6 +477,7 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
 
         const val MATERIAL_PATH = "files/materials/moon.filamat"
         const val ALBEDO_PATH = "files/textures/moon_albedo_2k.png"
+        const val ALBEDO_ALT_PATH = "files/textures/moon_albedo_2k_alt.png"
         const val NORMAL_PATH = "files/textures/moon_normal_2k.png"
     }
 }

@@ -22,6 +22,8 @@ final class MoonRendererViewController: UIViewController {
     private var pendingAlbedo: Data?
     private var pendingNormal: Data?
     private var pendingMaterial: Data?
+    private var pendingAltAlbedo: Data?
+    private var pendingAlbedoVariant: Int?
 
     override func loadView() {
         let v = MoonRendererView(frame: .zero)
@@ -44,6 +46,14 @@ final class MoonRendererViewController: UIViewController {
         if let a = pendingAlbedo, let n = pendingNormal, let m = pendingMaterial {
             r.loadAssetsAlbedo(a, normal: n, material: m)
             pendingAlbedo = nil; pendingNormal = nil; pendingMaterial = nil
+        }
+        if let alt = pendingAltAlbedo {
+            r.loadAltAlbedo(alt)
+            pendingAltAlbedo = nil
+        }
+        if let v = pendingAlbedoVariant {
+            r.setAlbedoVariant(Int32(v))
+            pendingAlbedoVariant = nil
         }
     }
 
@@ -78,6 +88,22 @@ final class MoonRendererViewController: UIViewController {
             pendingAlbedo = albedo
             pendingNormal = normal
             pendingMaterial = material
+        }
+    }
+
+    @objc func loadAltAlbedo(albedo: Data) {
+        if let r = renderer {
+            r.loadAltAlbedo(albedo)
+        } else {
+            pendingAltAlbedo = albedo
+        }
+    }
+
+    @objc func setAlbedoVariant(_ variant: Int) {
+        if let r = renderer {
+            r.setAlbedoVariant(Int32(variant))
+        } else {
+            pendingAlbedoVariant = variant
         }
     }
 

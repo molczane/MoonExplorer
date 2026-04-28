@@ -21,4 +21,10 @@ suspend fun loadAndPushBundledAssets() {
     val normal = Res.readBytes("files/textures/moon_normal_2k.png")
     val material = Res.readBytes("files/materials/moon.filamat")
     MoonRendererProvider.applyAssets(albedo, normal, material)
+
+    // Phase 6 (T060) — push the alt albedo so the runtime texture-swap toggle
+    // can rebind without going back to disk. Both textures stay resident in
+    // GPU memory; ~6 MB combined for the 2 K spike, fine for the spike budget.
+    val albedoAlt = Res.readBytes("files/textures/moon_albedo_2k_alt.png")
+    MoonRendererProvider.applyAltAlbedo(albedoAlt)
 }

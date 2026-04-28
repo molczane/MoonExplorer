@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -80,5 +82,22 @@ fun MoonExplorerScreen(modifier: Modifier = Modifier) {
                 .fillMaxWidth()
                 .padding(16.dp),
         )
+        // Phase 6 (T060) debug toggle — flips between the two bundled
+        // placeholder albedos. Reachable in the Phase 0 spike UI; will be
+        // gated behind a debug build flag (or removed entirely) before any
+        // public release. The renderer-side rebind is on `state.albedoVariant`,
+        // so the swap propagates through the same per-frame state path as
+        // camera/sun (no out-of-band imperative call needed).
+        TextButton(
+            onClick = { viewModel.toggleAlbedoVariant() },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp),
+        ) {
+            Text(
+                text = if (state.albedoVariant == 0) "Texture A" else "Texture B",
+                color = Color.White,
+            )
+        }
     }
 }

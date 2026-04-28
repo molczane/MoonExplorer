@@ -18,5 +18,11 @@ object MoonRendererProvider {
     var applySunDirection: (x: Float, y: Float, z: Float) -> Unit = { _, _, _ -> }
     var applyMoonRotation: (rotationRad: Float) -> Unit = { _ -> }
     var applyAssets: (albedo: ByteArray, normal: ByteArray, material: ByteArray) -> Unit = { _, _, _ -> }
+    /** Phase 6 (T060). Pushes the alt albedo PNG bytes once at startup; renderer
+     *  builds a second `Texture` it can swap to without rebuilding. */
+    var applyAltAlbedo: (altAlbedo: ByteArray) -> Unit = { _ -> }
+    /** Phase 6 (T060). Pushed every recompose alongside the other state setters;
+     *  renderer rebinds the material's `albedo` sampler when the variant changes. */
+    var applyAlbedoVariant: (variant: Int) -> Unit = { _ -> }
     var dispose: () -> Unit = {}
 }

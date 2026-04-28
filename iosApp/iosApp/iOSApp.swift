@@ -40,6 +40,12 @@ struct iOSApp: App {
                 material: material.toData()
             )
         }
+        provider.applyAltAlbedo = { altAlbedo in
+            renderer.loadAltAlbedo(albedo: altAlbedo.toData())
+        }
+        provider.applyAlbedoVariant = { variant in
+            renderer.setAlbedoVariant(Int(truncating: variant))
+        }
         provider.dispose = { renderer.tearDown() }
 
         // Pre-fetch bundled material + textures via Compose Resources, then
