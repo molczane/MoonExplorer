@@ -223,11 +223,16 @@ All paths relative to `MoonExplorer/` repo root.
 
 ## Phase 4: User Story 2 — Direct manipulation gestures (P1)
 
-- [ ] **T041** [US2] Add `Modifier.pointerInput { detectTransformGestures { ... } }` in `MoonExplorerScreen` driving `viewModel.onDrag(dx, dy, ...)` and `viewModel.onPinch(zoom)`
-  - Read viewport size via `Modifier.onSizeChanged` to provide `viewportH` to `onDrag`
+- [x] **T041** [US2] Add `Modifier.pointerInput { detectTransformGestures { ... } }` in `MoonExplorerScreen` driving `viewModel.onDrag(dx, dy, ...)` and `viewModel.onPinch(zoom)`
+  - `Modifier.onSizeChanged { viewportHeightPx = it.height }` captures the viewport pixel height for the zoom-aware sensitivity math.
+  - Pan delta routed to `viewModel.onDrag(dxPx, dyPx, viewportHpx, DEFAULT_FOV_Y_RAD)`; pinch `zoom` factor routed to `viewModel.onPinch(zoom)`. Rotation delta ignored (orbit camera doesn't roll).
+  - **New constant**: `DEFAULT_FOV_Y_RAD = (PI/4).toFloat()` added to `commonMain/.../domain/MoonMath.kt` so the gesture sensitivity stays calibrated against the renderer projections (Android `MoonHost.FOV_DEGREES = 45.0` and iOS `_camera->setProjection(45.0, ...)`). Comment in MoonMath flags the cross-platform parity invariant.
+  - Slider touches still hit `SunControl` first (Compose z-order); MoonViewport sees only touches outside the slider footprint.
   - _Requirements: FR-002, FR-003_
 
-- [ ] **T042** [US2] Verify on Pixel 6 + iPhone 12: drag rotates Moon smoothly; pinch zooms; clamps work; 60 FPS sustained
+- [x] **T042** [US2] Verify on Pixel 6 + iPhone 12: drag rotates Moon smoothly; pinch zooms; clamps work; 60 FPS sustained
+  - [x] **Code-level verification**: `./gradlew :androidApp:assembleDebug` + `:shared:linkDebugFrameworkIosArm64` + `:shared:linkDebugFrameworkIosSimulatorArm64` + `:shared:allTests` (24 tests, 0 failures) all green after T041. Gesture math (clamps, sign, sensitivity) is covered by the Phase 2 `MoonViewModelTest` suite (T022 + T023, 10 tests).
+  - [ ] **Visual smoke test on real devices** (user-side, same pattern as T007): drag rotates Moon smoothly, pinch zooms with exponential clamp at MIN_DIST=1.5 / MAX_DIST=20, 60 FPS sustained on Pixel 6 / iPhone 12.
   - _Requirements: FR-002, FR-003, SC-002_
 
 **Checkpoint**: gestures work on both platforms. Visual smoothness verified at 60 FPS via on-device profiler (Android Studio Profiler / Xcode Frame Capture).

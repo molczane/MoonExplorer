@@ -22,6 +22,20 @@ const val RAD_TO_DEG: Float = (180.0 / PI).toFloat()
 /** ~89.4° — keeps lookAt's up-vector cross product well-defined near the poles. */
 const val PITCH_LIMIT_RAD: Float = ((PI / 2) - 0.01).toFloat()
 
+/**
+ * Default vertical field of view shared between the platform renderer hosts
+ * and `MoonViewModel.onDrag`'s pixel-to-radian sensitivity math
+ * (`ai-docs/research/selenographic-math-camera.md` §4). Stating the value
+ * once here keeps the gesture-feel calibrated against the actual projection;
+ * divergent values would produce drag rates that don't track the Moon's
+ * apparent size.
+ *
+ * **Cross-platform parity invariant**: if this changes, update the renderer
+ * projections too — `MoonHost.FOV_DEGREES` (Android) and the `setProjection`
+ * call in `iosApp/iosApp/MoonRenderer.mm` (iOS).
+ */
+const val DEFAULT_FOV_Y_RAD: Float = (PI / 4).toFloat() // 45°
+
 data class LatLon(val latDeg: Float, val lonDeg: Float)
 
 /** Selenographic (lat°, lon°) → Cartesian on the unit Moon. */
