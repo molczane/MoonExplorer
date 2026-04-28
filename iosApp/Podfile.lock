@@ -1,4 +1,7 @@
 PODS:
+  - Filament/filamat (1.71.1):
+    - Filament/math
+    - Filament/utils
   - Filament/filament (1.71.1):
     - Filament/math
     - Filament/utils
@@ -9,12 +12,17 @@ PODS:
     - Filament/image
   - Filament/math (1.71.1)
   - Filament/tsl (1.71.1)
+  - Filament/uberz (1.71.1):
+    - Filament/filamat
+    - Filament/tsl
+    - Filament/utils
   - Filament/utils (1.71.1):
     - Filament/tsl
 
 DEPENDENCIES:
   - Filament/filament (from `https://raw.githubusercontent.com/google/filament/v1.71.1/ios/CocoaPods/Filament.podspec`)
   - Filament/ktxreader (from `https://raw.githubusercontent.com/google/filament/v1.71.1/ios/CocoaPods/Filament.podspec`)
+  - Filament/uberz (from `https://raw.githubusercontent.com/google/filament/v1.71.1/ios/CocoaPods/Filament.podspec`)
 
 EXTERNAL SOURCES:
   Filament:
@@ -23,6 +31,6 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   Filament: f794b1113e45612a41bb411eb25bcb871f9be65c
 
-PODFILE CHECKSUM: 0071b7e6d161443e16ba3851a7fba51202172a95
+PODFILE CHECKSUM: 54105f1641d89e7b1e14bc1e9241cb6e9ccf9af4
 
 COCOAPODS: 1.16.2
