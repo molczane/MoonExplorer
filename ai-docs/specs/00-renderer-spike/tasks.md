@@ -139,29 +139,35 @@ All paths relative to `MoonExplorer/` repo root.
 
 ### Implementation for User Story 1 (assets + Android)
 
-- [ ] **T030** [US1] Author `materials/moon.mat` source
+- [x] **T030** [US1] Author `materials/moon.mat` source
   - PBR with albedo + normal map; directional light support; sRGB albedo, linear normal
   - Material parameter inputs: `albedo` (sampler2D, sRGB), `normalMap` (sampler2D, linear)
+  - `shadingModel: lit, blending: opaque`; matte non-metallic surface (`roughness=0.95, metallic=0.0`)
+  - `:shared:compileMaterials` produces ~734 KB `moon.filamat` (all variants for `-p mobile`); copied to `composeResources/files/materials/moon.filamat`
   - _Requirements: FR-005_
 
-- [ ] **T031** [US1] Generate placeholder `textures/moon_albedo_2k.ktx2` and `textures/moon_normal_2k.ktx2`
-  - Use a recognizable test pattern (lat/lon grid + color quadrants) for the spike — easier to verify rotation/lighting than a real Moon
-  - `toktx --t2 --bcmp --genmipmap --assign_oetf srgb` for albedo
-  - `toktx --t2 --uastc 2 --uastc_rdo_l 1.0 --zcmp 18 --genmipmap --assign_oetf linear` for normal
-  - _Requirements: FR-001, FR-008, ADR-0004_
+- [x] **T031** [US1] Generate placeholder `textures/moon_albedo_2k.png` and `textures/moon_normal_2k.png`
+  - **Deviation from ADR-0004**: ADR called for KTX2 + Basis Universal, but `toktx` is not installed on this dev machine and the spike doesn't need it. Shipped raw PNG instead — Phase 3 renderers decode via `BitmapFactory` (Android) / `UIImage` (iOS) and upload to Filament `Texture` as RGBA8. KTX2 + Basis pipeline ships properly in `02-moon-renderer-mvp` together with the real NASA SVS assets.
+  - Albedo: 2048×1024, four colored quadrants (NE warm rust / NW muted green / SE muted blue / SW muted red) with a 30° lat/lon graticule and brighter equator + prime-meridian lines — clearly identifiable when the Moon rotates. ~8 KB PNG.
+  - Normal: 2048×1024, flat tangent-space (RGB = 128, 128, 255 → normal = (0, 0, 1)). ~8 KB PNG.
+  - One-off generator: Python + Pillow (not vendored; trivial to recreate).
+  - _Requirements: FR-001, FR-008, ADR-0004 (with documented spike deviation)_
 
-- [ ] **T032** [US1] Implement `androidMain/render/MoonHost.kt`
-  - Manages Filament `Engine`, `SwapChain`, `Renderer`, `View`, `Scene`, `Camera`, `UiHelper`, `Material`, `MaterialInstance`, `Texture`s, `VertexBuffer`+`IndexBuffer` from `UvSphere`
-  - Loads bytes via `Res.readBytes("files/materials/moon.filamat")` etc.
-  - Implements `LifecycleObserver`: `onResume` posts Choreographer frame callback; `onPause` removes it
-  - `destroy()` releases all resources in reverse order per `filament-cmp-integration.md` §1
+- [x] **T032** [US1] Implement `androidMain/render/MoonHost.kt`
+  - Owns Engine, Renderer, Scene, View, Camera, SwapChain (via `UiHelper`), Material+MaterialInstance, two Textures (sRGB albedo + linear normal), VertexBuffer+IndexBuffer from `UvSphere.generate(64,32)`, RenderableManager entity, directional Light.
+  - `Choreographer.FrameCallback`: posts self, reads `state.value`, pushes camera (`Camera.lookAt` from `cameraPosition` + `cameraUpVector`) + sun direction + Moon rotation, calls `renderer.beginFrame/render/endFrame`.
+  - `DefaultLifecycleObserver` (ON_RESUME/ON_PAUSE) starts/stops the frame callback. `destroy()` tears down in reverse construction order.
+  - **Deviations from spec** (Agent A): vertex layout uses 3 separate buffers (POSITION FLOAT3, TANGENTS FLOAT3, UV0 FLOAT2) — no NORMAL attribute since `moon.mat` reads its normal from the normal-map sampler. Tangent is FLOAT3 not packed quaternion; if hardware shows garbled lighting, swap to FLOAT4 packed quat via `filament-utils-android` `TangentsTools.computeTangentFrame`.
+  - **Sign convention**: `state.sunDirection` (Moon→Sun, ADR-0006) is **negated** before `LightManager.setDirection` (Filament wants the travel vector). Worth keeping in mind if lighting looks inverted.
+  - Sampler: LINEAR / LINEAR (no mipmaps; ships `levels(1)`). Wrap REPEAT in U, CLAMP_TO_EDGE in V.
+  - Bytes loaded via `Res.readBytes("files/...")` inside `runBlocking` (Compose Resources is suspend); assets are tiny (~750 KB total) so blocking once at composition is fine for the spike.
   - _Requirements: FR-006, FR-007, FR-008, ADR-0003_
 
-- [ ] **T033** [US1] Implement `androidMain/render/MoonViewport.android.kt`
-  - `AndroidView { SurfaceView(ctx).also { sv -> attach MoonHost; lifecycle.addObserver(host) } }`
-  - `onRelease { host.destroy() }`
-  - `update = { /* host reads state.value per frame, no push needed */ }`
-  - Per Choreographer frame: read `state.value`, push camera + sun + transforms, `renderer.beginFrame/render/endFrame`
+- [x] **T033** [US1] Implement `androidMain/render/MoonViewport.android.kt`
+  - `AndroidView` factory creates `SurfaceView`, instantiates `MoonHost`, `host.start(lifecycleOwner)`, stashes host on `surfaceView.tag` (no Android resource id needed — wizard layout under the new AGP 9 KMP plugin made res-id files awkward).
+  - `update` lambda calls `host.updateState(state)` — host stores via `@Volatile var`, the Choreographer callback reads it next frame.
+  - `onRelease` calls `host.destroy()` and clears the tag.
+  - `LocalLifecycleOwner` from `androidx.lifecycle.compose` for CMP-friendly lifecycle access.
   - _Requirements: FR-001, FR-002, FR-003, FR-004, FR-006, FR-007, ADR-0003_
 
 **Checkpoint (Android)**: `./gradlew :androidApp:installDebug` then launch on Pixel 6 — see a 3D textured sphere within 2 seconds. SC-001 partially met.
@@ -171,58 +177,44 @@ All paths relative to `MoonExplorer/` repo root.
 > Block on T005 verification (already resolved) and T007 smoke test before starting.
 > See **ADR-0002 §"Bridge pattern: closure injection from Swift"** for the design.
 
-- [ ] **T034** [US1] Implement `iosMain/render/MoonRendererProvider.kt`
-  - Kotlin `object` (singleton) in `:shared/iosMain` with mutable closure properties:
-    - `var factory: () -> UIViewController = { UIViewController() }`
-    - `var applyCamera: (yawRad: Float, pitchRad: Float, distance: Float) -> Unit`
-    - `var applySunDirection: (x: Float, y: Float, z: Float) -> Unit`
-    - `var applyMoonRotation: (rotationRad: Float) -> Unit`
-    - `var applyAssets: (albedo: ByteArray, normal: ByteArray, material: ByteArray) -> Unit`
-    - `var dispose: () -> Unit`
-  - All defaults are no-ops or `{ UIViewController() }` so commonMain works without iOS-app wiring (e.g., Compose Previews, tests)
+- [x] **T034** [US1] Implement `iosMain/render/MoonRendererProvider.kt`
+  - Kotlin `object` (singleton) with the six closure properties exactly as specified — defaults are no-ops or `{ UIViewController() }`. Swift sees it as `MoonRendererProvider.shared`.
   - _Requirements: ADR-0002 §"Bridge pattern", ADR-0003_
 
-- [ ] **T035** [US1] Implement `iosMain/render/MoonViewport.ios.kt`
-  - `actual @Composable fun MoonViewport(state: MoonRenderState, modifier: Modifier)`
-  - `val vc = remember { MoonRendererProvider.factory() }`
-  - `UIKitViewController(factory = { vc }, update = { ... }, onRelease = { MoonRendererProvider.dispose() }, modifier = modifier)`
-  - In `update`: forward `state.cameraYawRad/pitchRad/distance` to `applyCamera`; `state.sunDirection.{x,y,z}` to `applySunDirection`; `state.moonRotationRad` to `applyMoonRotation`
+- [x] **T035** [US1] Implement `iosMain/render/MoonViewport.ios.kt`
+  - Replaced the Phase 2 stub with the full `UIKitViewController(factory, update, onRelease)` wiring against `MoonRendererProvider`.
+  - `update` forwards camera + sun + moon-rotation per frame to the closures (push every recompose; the Swift CADisplayLink reads the cached scalars inside `renderloop`).
+  - `@OptIn(ExperimentalForeignApi::class)` for `UIKitViewController` interop.
   - _Requirements: FR-001, FR-002, FR-003, FR-004, FR-006, FR-007, ADR-0002, ADR-0003_
 
-- [ ] **T036** [US1] Implement `iosMain/render/MoonAssets.kt`
-  - `suspend fun loadAndPushBundledAssets()` reads:
-    - `Res.readBytes("files/materials/moon.filamat")`
-    - `Res.readBytes("files/textures/moon_albedo_2k.ktx2")`
-    - `Res.readBytes("files/textures/moon_normal_2k.ktx2")`
-  - Calls `MoonRendererProvider.applyAssets(albedo, normal, material)`
-  - Top-level function so Swift sees it as `MoonAssetsKt.loadAndPushBundledAssets()`
+- [x] **T036** [US1] Implement `iosMain/render/MoonAssets.kt`
+  - `suspend fun loadAndPushBundledAssets()` reads `moon.filamat` + `moon_albedo_2k.png` + `moon_normal_2k.png` (PNG instead of KTX2 per the T031 deviation) and calls `MoonRendererProvider.applyAssets(albedo, normal, material)`.
+  - Top-level function so Swift sees it as `MoonAssetsKt.loadAndPushBundledAssets()`.
   - _Requirements: FR-001, FR-008, ADR-0004_
 
-- [ ] **T037** [US1] Author `iosApp/iosApp/MoonRenderer.h` — Objective-C interface (internal to iosApp; **not** exposed to Kotlin)
-  - Methods: `init`, `setCameraYaw:pitch:distance:`, `setSunDirectionX:y:z:`, `setMoonRotation:`, `loadAssetsAlbedo:normal:material:`, `pause`, `resume`, `dispose`
-  - All types ObjC-compatible (`NSData`, `float`, `void`)
+- [x] **T037** [US1] Author `iosApp/iosApp/MoonRenderer.h` — Objective-C interface (internal to iosApp; **not** exposed to Kotlin)
+  - Methods: `initWithLayer:`, `setCameraYaw:pitch:distance:`, `setSunDirectionX:y:z:`, `setMoonRotation:`, `loadAssetsAlbedo:normal:material:`, `pause`, `resume`, `dispose`, plus a `resize:(CGSize)` (added by Agent B for rotation/safe-area; not in original spec but necessary).
+  - All types ObjC-compatible (`NSData`, `float`, `CGSize`, `void`).
+  - **Bridging header**: Agent B added `iosApp/iosApp/iosApp-Bridging-Header.h` and set `SWIFT_OBJC_BRIDGING_HEADER` in the iosApp target's Debug + Release build settings — Xcode 16's `PBXFileSystemSynchronizedRootGroup` auto-attaches source files to the target but does **not** auto-detect bridging headers. Plus `CLANG_CXX_LANGUAGE_STANDARD=gnu++20`, `CLANG_CXX_LIBRARY=libc++`, `CLANG_ENABLE_MODULES=YES`, `CLANG_ENABLE_OBJC_ARC=YES`, `GCC_C_LANGUAGE_STANDARD=gnu17` so the .mm compiles under modern C++ with libc++ + ARC.
   - _Requirements: ADR-0002_
 
-- [ ] **T038** [US1] Implement `iosApp/iosApp/MoonRenderer.mm` — Objective-C++ wrapping Filament's C++ API
-  - `<filament/Engine.h>` etc. hidden behind ObjC interface so Swift sees only ObjC types
-  - Mirrors the Filament object graph from `ai-docs/research/filament-cmp-integration.md` §1
-  - Engine creation, scene setup, render loop coupling, resource teardown
+- [x] **T038** [US1] Implement `iosApp/iosApp/MoonRenderer.mm` — Objective-C++ wrapping Filament's C++ API
+  - `<filament/...>` includes hidden behind ObjC interface; Swift sees only ObjC types.
+  - Engine on `Backend::METAL`, SwapChain from `(__bridge void*)layer`, full Engine graph mirroring Android's `MoonHost`.
+  - **Vertex format deviation**: single interleaved buffer (POSITION float3 + UV0 float2 + TANGENTS quat float4 = 36 B/vertex) generated in C++ rather than parallel buffers from `UvSphere.kt` — more efficient on Metal, easier to express in C++. Same UV/tangent conventions as the Kotlin sphere generator.
+  - **Texture decode** via `CGImageSource` → raw RGBA bytes → `Texture::Builder` (`SRGB8_A8` for albedo, `RGBA8` for normal). ARC ↔ Filament release callback uses `__bridge_retained` / `__bridge_transfer` (standard pattern).
+  - `dispose` releases all Filament resources in reverse order then `Engine::destroy(engine)`.
   - _Requirements: ADR-0001, ADR-0002, FR-006_
 
-- [ ] **T039** [US1] Implement `iosApp/iosApp/MoonRendererView.swift` and `MoonRendererViewController.swift`
-  - **`MoonRendererView`**: `UIView` subclass with `+ (Class)layerClass = CAMetalLayer`. `initializeMetalLayer()` sets pixel format `MTLPixelFormatBGRA8Unorm` and drawable size from bounds × contentScaleFactor.
-  - **`MoonRendererViewController`**: `UIViewController` hosting a `MoonRendererView`, owns a `MoonRenderer` instance. On `viewDidLoad`: call `renderer.init` with `view.layer`. Drives a `CADisplayLink` render loop calling `renderer` methods. Public methods exposed to Swift callers (used by `iOSApp.swift`'s closure wiring): `setCamera(yaw:pitch:distance:)`, `setSunDirection(x:y:z:)`, `setMoonRotation(_:)`, `loadAssets(albedo:normal:material:)`, `tearDown()`. On `viewWillDisappear`: pause CADisplayLink. On `dealloc`: `renderer.dispose()`.
+- [x] **T039** [US1] Implement `iosApp/iosApp/MoonRendererView.swift` and `MoonRendererViewController.swift`
+  - `MoonRendererView`: `UIView` subclass overriding `layerClass = CAMetalLayer`; sets pixel format `bgra8Unorm` + drawableSize from `bounds × contentScaleFactor`; an `onDrawableSizeChanged` callback fires from `layoutSubviews` so `MoonRenderer.resize:` can update Filament's viewport + camera projection on rotation/safe-area changes.
+  - `MoonRendererViewController`: hosts the view, owns a `MoonRenderer`, drives `CADisplayLink`. Public Swift surface: `setCamera/setSunDirection/setMoonRotation/loadAssets/tearDown`.
+  - **Asset race protection** (Agent B addition): `loadAssets(...)` may be called from `iOSApp.init()`'s `Task` *before* `viewDidLoad` runs — the VC caches assets in `pendingAlbedo/Normal/Material` and re-emits them once the renderer is constructed.
   - _Requirements: FR-001, FR-002, FR-003, FR-004, FR-006, FR-007, ADR-0002_
 
-- [ ] **T040** [US1] Wire `MoonRendererProvider` closures from `iosApp/iosApp/iOSApp.swift`
-  - Add `KotlinByteArray+Data.swift` extension converting `KotlinByteArray` → `Data`.
-  - In `iOSApp.init()`:
-    - Create one `MoonRendererViewController` instance.
-    - Set `MoonRendererProvider.shared.factory = { renderer }` — captures the instance.
-    - Set `applyCamera`/`applySunDirection`/`applyMoonRotation` to forward floats to the corresponding renderer methods.
-    - Set `applyAssets = { albedo, normal, material in renderer.loadAssets(albedo: albedo.toData(), normal: normal.toData(), material: material.toData()) }`.
-    - Set `dispose = { renderer.tearDown() }`.
-    - Kick off `Task { await MoonAssetsKt.loadAndPushBundledAssets() }` to push bundled assets at startup.
+- [x] **T040** [US1] Wire `MoonRendererProvider` closures from `iosApp/iosApp/iOSApp.swift`
+  - `KotlinByteArray+Data.swift` extension authored.
+  - `iOSApp.init()` instantiates one `MoonRendererViewController`, sets all six closures (`factory`, `applyCamera`, `applySunDirection`, `applyMoonRotation`, `applyAssets`, `dispose`), kicks off `Task { try? await MoonAssetsKt.loadAndPushBundledAssets() }`.
   - _Requirements: FR-001, FR-008, ADR-0002, ADR-0003, ADR-0004_
 
 **Checkpoint (iOS)**: `./gradlew :shared:embedAndSignAppleFrameworkForXcode` then build+run from Xcode workspace on iPhone 12 (or simulator under Rosetta) — see the same 3D textured sphere. SC-001 fully met.

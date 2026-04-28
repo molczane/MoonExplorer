@@ -1,0 +1,575 @@
+#import "MoonRenderer.h"
+
+#import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
+
+#include <filament/Camera.h>
+#include <filament/Engine.h>
+#include <filament/IndexBuffer.h>
+#include <filament/LightManager.h>
+#include <filament/Material.h>
+#include <filament/MaterialEnums.h>
+#include <filament/MaterialInstance.h>
+#include <filament/RenderableManager.h>
+#include <filament/Renderer.h>
+#include <filament/Scene.h>
+#include <filament/SwapChain.h>
+#include <filament/Texture.h>
+#include <filament/TextureSampler.h>
+#include <filament/TransformManager.h>
+#include <filament/VertexBuffer.h>
+#include <filament/View.h>
+#include <filament/Viewport.h>
+
+#include <math/mat3.h>
+#include <math/mat4.h>
+#include <math/quat.h>
+#include <math/vec2.h>
+#include <math/vec3.h>
+#include <math/vec4.h>
+
+#include <utils/Entity.h>
+#include <utils/EntityManager.h>
+
+#include <atomic>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <utility>
+#include <vector>
+
+using namespace filament;
+using namespace filament::math;
+using utils::Entity;
+using utils::EntityManager;
+
+// --- Procedural UV sphere mesh (mirrors commonMain UvSphere.kt convention) ---
+//
+// Right-handed Y-up; ADR-0006 §"Texture mapping":
+//   u = i / segments,  v = 1 - j / rings.
+// The mesh is interleaved (POSITION + UV0 + TANGENT_QUAT) for one
+// VertexBuffer/IndexBuffer pair. Tangent is encoded as a quaternion the way
+// Filament wants for the TANGENTS attribute (lit shading + normalMap parameter
+// from moon.mat). The quaternion is built from a normal/tangent/bitangent
+// frame using the helper at the bottom of the file.
+
+namespace {
+
+struct Vertex {
+    float3 position;
+    float2 uv;
+    quatf  tangent;
+};
+
+// Build a quaternion that orients (1,0,0) → tangent, (0,1,0) → bitangent,
+// (0,0,1) → normal. This matches Filament's expected encoding for the
+// TANGENTS attribute (see filament/Materials.md and the gltf sample).
+quatf packTangentFrame(const float3& n, const float3& t, const float3& b) {
+    // Build a 3x3 matrix and convert to quaternion.
+    mat3f m;
+    m[0] = t;
+    m[1] = b;
+    m[2] = n;
+    return mat3f::packTangentFrame(m);
+}
+
+void generateSphereMesh(uint32_t segments, uint32_t rings,
+                        std::vector<Vertex>& outVertices,
+                        std::vector<uint16_t>& outIndices) {
+    const uint32_t vertexCount = (segments + 1) * (rings + 1);
+    outVertices.clear();
+    outVertices.reserve(vertexCount);
+
+    const float PI_F = static_cast<float>(M_PI);
+    for (uint32_t j = 0; j <= rings; ++j) {
+        const float v = 1.0f - (float)j / (float)rings;
+        // lat: -PI/2 at j=0 (south), +PI/2 at j=rings (north).
+        const float lat = (-0.5f + (float)j / (float)rings) * PI_F;
+        const float cl = std::cos(lat);
+        const float sl = std::sin(lat);
+        for (uint32_t i = 0; i <= segments; ++i) {
+            const float u = (float)i / (float)segments;
+            // lon: -PI at i=0, +PI at i=segments.
+            const float lon = (-1.0f + 2.0f * (float)i / (float)segments) * PI_F;
+            const float cs = std::cos(lon);
+            const float ss = std::sin(lon);
+
+            float3 position{ cl * ss, sl, cl * cs };
+            float3 normal = position; // unit sphere
+            // dPos/dlon (east), normalized: (cos(lon), 0, -sin(lon)).
+            float3 tangent{ cs, 0.0f, -ss };
+            // bitangent = normal × tangent (north-pointing on sphere).
+            float3 bitangent = cross(normal, tangent);
+
+            quatf q = packTangentFrame(normal, tangent, bitangent);
+
+            outVertices.push_back({ position, { u, v }, q });
+        }
+    }
+
+    const uint32_t triCount = segments * rings * 2;
+    outIndices.clear();
+    outIndices.reserve(triCount * 3);
+    for (uint32_t j = 0; j < rings; ++j) {
+        for (uint32_t i = 0; i < segments; ++i) {
+            uint16_t a = (uint16_t)(j * (segments + 1) + i);
+            uint16_t b = (uint16_t)(a + 1);
+            uint16_t c = (uint16_t)(a + (segments + 1));
+            uint16_t d = (uint16_t)(c + 1);
+            outIndices.push_back(a); outIndices.push_back(b); outIndices.push_back(c);
+            outIndices.push_back(b); outIndices.push_back(d); outIndices.push_back(c);
+        }
+    }
+}
+
+// Decodes a PNG (or any UIImage-readable format) NSData into a tightly-packed
+// RGBA8 buffer in top-down row order. Returns nil on failure.
+//
+// The texture comes back from CGContext as RGBA in the device color space; we
+// declare the Filament internal format (SRGB8_A8 for albedo, RGBA8 for normal)
+// independently — the GPU does the right thing with the raw bytes.
+NSData* decodePngToRgba8(NSData* pngData, uint32_t* outW, uint32_t* outH) {
+    UIImage* image = [UIImage imageWithData:pngData];
+    if (!image || !image.CGImage) {
+        return nil;
+    }
+    CGImageRef cgImage = image.CGImage;
+    const size_t width = CGImageGetWidth(cgImage);
+    const size_t height = CGImageGetHeight(cgImage);
+    const size_t bytesPerPixel = 4;
+    const size_t bytesPerRow = bytesPerPixel * width;
+    const size_t bitsPerComponent = 8;
+
+    NSMutableData* buffer = [NSMutableData dataWithLength:width * height * bytesPerPixel];
+    if (!buffer) {
+        return nil;
+    }
+
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    // Top-down: do NOT flip the y axis. Filament expects rows top-to-bottom,
+    // matching how the source PNG was authored.
+    uint32_t bitmapInfo = (uint32_t)kCGImageAlphaPremultipliedLast |
+                          (uint32_t)kCGBitmapByteOrder32Big;
+    CGContextRef ctx = CGBitmapContextCreate(
+        buffer.mutableBytes,
+        width, height,
+        bitsPerComponent,
+        bytesPerRow,
+        colorSpace,
+        bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+    if (!ctx) {
+        return nil;
+    }
+
+    CGContextDrawImage(ctx, CGRectMake(0, 0, (CGFloat)width, (CGFloat)height), cgImage);
+    CGContextRelease(ctx);
+
+    if (outW) *outW = (uint32_t)width;
+    if (outH) *outH = (uint32_t)height;
+    return buffer;
+}
+
+void releaseNsData(void*, size_t, void* user) {
+    NSData* keep = (__bridge_transfer NSData*)user;
+    (void)keep;
+}
+
+void releaseStdVectorBytes(void*, size_t, void* user) {
+    auto* vec = static_cast<std::vector<uint8_t>*>(user);
+    delete vec;
+}
+
+void releaseStdVectorIndices(void*, size_t, void* user) {
+    auto* vec = static_cast<std::vector<uint16_t>*>(user);
+    delete vec;
+}
+
+} // namespace
+
+// --- ObjC wrapper ---
+
+@implementation MoonRenderer {
+    CALayer* _layer;
+
+    Engine* _engine;
+    SwapChain* _swapChain;
+    Renderer* _renderer;
+    View* _view;
+    Scene* _scene;
+    Camera* _camera;
+    Entity _cameraEntity;
+    Entity _sunEntity;
+    Entity _moonEntity;
+
+    Material* _material;
+    MaterialInstance* _materialInstance;
+    Texture* _albedoTex;
+    Texture* _normalTex;
+    VertexBuffer* _vertexBuffer;
+    IndexBuffer* _indexBuffer;
+    uint32_t _indexCount;
+
+    CADisplayLink* _displayLink;
+    BOOL _running;
+    BOOL _materialBuilt;
+    BOOL _meshBuilt;
+
+    // Cached state, written by setters from any thread, read on the main
+    // thread inside renderloop. atomic<float> is overkill (ARM aligned 32-bit
+    // loads/stores are atomic) but keeps Thread Sanitizer quiet.
+    std::atomic<float> _yaw;
+    std::atomic<float> _pitch;
+    std::atomic<float> _distance;
+    std::atomic<float> _sunX;
+    std::atomic<float> _sunY;
+    std::atomic<float> _sunZ;
+    std::atomic<float> _moonRotation;
+}
+
+- (instancetype)initWithLayer:(CALayer *)layer {
+    self = [super init];
+    if (!self) return nil;
+
+    _layer = layer;
+    _running = NO;
+    _materialBuilt = NO;
+    _meshBuilt = NO;
+    _indexCount = 0;
+
+    // Initial state matches MoonRenderState defaults.
+    _yaw.store(0.0f);
+    _pitch.store(0.0f);
+    _distance.store(5.0f);
+    _sunX.store(0.0f);
+    _sunY.store(0.0f);
+    _sunZ.store(1.0f);
+    _moonRotation.store(0.0f);
+
+    // --- Engine + SwapChain (CAMetalLayer) ---
+    _engine = Engine::create(Engine::Backend::METAL);
+    _swapChain = _engine->createSwapChain((__bridge void*)layer);
+    _renderer = _engine->createRenderer();
+
+    Renderer::ClearOptions clearOpts;
+    clearOpts.clearColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+    clearOpts.clear = true;
+    _renderer->setClearOptions(clearOpts);
+
+    _scene = _engine->createScene();
+    _view = _engine->createView();
+    _view->setScene(_scene);
+    _view->setPostProcessingEnabled(false); // Phase 0 spike: skip post.
+
+    _cameraEntity = EntityManager::get().create();
+    _camera = _engine->createCamera(_cameraEntity);
+    _camera->setExposure(16.0f, 1.0f / 125.0f, 100.0f);
+    _view->setCamera(_camera);
+
+    // Initial viewport matches the CAMetalLayer drawable size; resize:
+    // updates this whenever the host UIView's bounds change.
+    const CGFloat scale = layer.contentsScale > 0 ? layer.contentsScale : 1.0;
+    const uint32_t w = (uint32_t)std::max(1.0, layer.bounds.size.width * scale);
+    const uint32_t h = (uint32_t)std::max(1.0, layer.bounds.size.height * scale);
+    _view->setViewport({0, 0, w, h});
+    _camera->setProjection(45.0, (double)w / (double)h, 0.1, 100.0,
+                           Camera::Fov::VERTICAL);
+
+    // --- Sun light (a single directional). Scene only — no IBL in Phase 0. ---
+    _sunEntity = EntityManager::get().create();
+    LightManager::Builder(LightManager::Type::DIRECTIONAL)
+        .color({ 1.0f, 1.0f, 1.0f })
+        .intensity(110000.0f) // bright outdoor sunlight
+        .direction({ 0.0f, 0.0f, -1.0f })
+        .castShadows(false)
+        .build(*_engine, _sunEntity);
+    _scene->addEntity(_sunEntity);
+
+    // --- Display link (paused) ---
+    _displayLink = [CADisplayLink displayLinkWithTarget:self
+                                               selector:@selector(renderloop)];
+    _displayLink.paused = YES;
+    [_displayLink addToRunLoop:[NSRunLoop mainRunLoop]
+                       forMode:NSRunLoopCommonModes];
+
+    return self;
+}
+
+- (void)dealloc {
+    [self dispose];
+}
+
+- (void)dispose {
+    if (_engine == nullptr) {
+        return;
+    }
+    [_displayLink invalidate];
+    _displayLink = nil;
+    _running = NO;
+
+    // Reverse construction order. Entity-backed components (camera, sun, moon
+    // renderable) are destroyed via their components, then the entity itself.
+    if (_moonEntity) {
+        _scene->remove(_moonEntity);
+        _engine->destroy(_moonEntity);
+        EntityManager::get().destroy(_moonEntity);
+        _moonEntity = Entity{};
+    }
+    if (_sunEntity) {
+        _scene->remove(_sunEntity);
+        _engine->destroy(_sunEntity);
+        EntityManager::get().destroy(_sunEntity);
+        _sunEntity = Entity{};
+    }
+    if (_indexBuffer)    { _engine->destroy(_indexBuffer);    _indexBuffer    = nullptr; }
+    if (_vertexBuffer)   { _engine->destroy(_vertexBuffer);   _vertexBuffer   = nullptr; }
+    if (_albedoTex)      { _engine->destroy(_albedoTex);      _albedoTex      = nullptr; }
+    if (_normalTex)      { _engine->destroy(_normalTex);      _normalTex      = nullptr; }
+    if (_materialInstance) { _engine->destroy(_materialInstance); _materialInstance = nullptr; }
+    if (_material)       { _engine->destroy(_material);       _material       = nullptr; }
+    if (_view)           { _engine->destroy(_view);           _view           = nullptr; }
+    if (_scene)          { _engine->destroy(_scene);          _scene          = nullptr; }
+    if (_cameraEntity) {
+        _engine->destroyCameraComponent(_cameraEntity);
+        EntityManager::get().destroy(_cameraEntity);
+        _cameraEntity = Entity{};
+        _camera = nullptr;
+    }
+    if (_renderer)       { _engine->destroy(_renderer);       _renderer       = nullptr; }
+    if (_swapChain)      { _engine->destroy(_swapChain);      _swapChain      = nullptr; }
+
+    Engine::destroy(&_engine);
+    _engine = nullptr;
+}
+
+- (void)resume {
+    if (_engine == nullptr) return;
+    _running = YES;
+    _displayLink.paused = NO;
+}
+
+- (void)pause {
+    _running = NO;
+    _displayLink.paused = YES;
+}
+
+- (void)resize:(CGSize)drawableSize {
+    if (_engine == nullptr || _view == nullptr || _camera == nullptr) return;
+    const uint32_t w = (uint32_t)std::max(1.0, (double)drawableSize.width);
+    const uint32_t h = (uint32_t)std::max(1.0, (double)drawableSize.height);
+    _view->setViewport({0, 0, w, h});
+    _camera->setProjection(45.0, (double)w / (double)h, 0.1, 100.0,
+                           Camera::Fov::VERTICAL);
+}
+
+- (void)setCameraYaw:(float)yaw pitch:(float)pitch distance:(float)distance {
+    _yaw.store(yaw);
+    _pitch.store(pitch);
+    _distance.store(distance);
+}
+
+- (void)setSunDirectionX:(float)x y:(float)y z:(float)z {
+    _sunX.store(x);
+    _sunY.store(y);
+    _sunZ.store(z);
+}
+
+- (void)setMoonRotation:(float)rotation {
+    _moonRotation.store(rotation);
+}
+
+- (void)loadAssetsAlbedo:(NSData *)albedo
+                  normal:(NSData *)normal
+                material:(NSData *)material {
+    if (_engine == nullptr) return;
+
+    // --- Material: build once. The .filamat blob is parsed by Filament. ---
+    if (!_materialBuilt && material.length > 0) {
+        // The Builder copies the package contents internally; safe to release
+        // the NSData after build().
+        _material = Material::Builder()
+            .package(material.bytes, material.length)
+            .build(*_engine);
+        if (_material) {
+            _materialInstance = _material->createInstance("moonInstance");
+            _materialBuilt = (_materialInstance != nullptr);
+        }
+    }
+
+    // --- Textures ---
+    if (_materialBuilt && _materialInstance) {
+        if (albedo.length > 0) {
+            uint32_t w = 0, h = 0;
+            NSData* rgba = decodePngToRgba8(albedo, &w, &h);
+            if (rgba && _albedoTex == nullptr) {
+                _albedoTex = Texture::Builder()
+                    .width(w).height(h).levels(1)
+                    .sampler(Texture::Sampler::SAMPLER_2D)
+                    .format(Texture::InternalFormat::SRGB8_A8)
+                    .build(*_engine);
+                if (_albedoTex) {
+                    const size_t size = (size_t)w * (size_t)h * 4;
+                    void* keep = (__bridge_retained void*)rgba;
+                    Texture::PixelBufferDescriptor pbd(
+                        rgba.bytes, size,
+                        Texture::Format::RGBA, Texture::Type::UBYTE,
+                        &releaseNsData, keep);
+                    _albedoTex->setImage(*_engine, 0, std::move(pbd));
+                }
+            }
+        }
+        if (normal.length > 0) {
+            uint32_t w = 0, h = 0;
+            NSData* rgba = decodePngToRgba8(normal, &w, &h);
+            if (rgba && _normalTex == nullptr) {
+                _normalTex = Texture::Builder()
+                    .width(w).height(h).levels(1)
+                    .sampler(Texture::Sampler::SAMPLER_2D)
+                    .format(Texture::InternalFormat::RGBA8)
+                    .build(*_engine);
+                if (_normalTex) {
+                    const size_t size = (size_t)w * (size_t)h * 4;
+                    void* keep = (__bridge_retained void*)rgba;
+                    Texture::PixelBufferDescriptor pbd(
+                        rgba.bytes, size,
+                        Texture::Format::RGBA, Texture::Type::UBYTE,
+                        &releaseNsData, keep);
+                    _normalTex->setImage(*_engine, 0, std::move(pbd));
+                }
+            }
+        }
+
+        if (_albedoTex && _normalTex) {
+            // REPEAT in U (longitude wraps), CLAMP_TO_EDGE in V (poles).
+            // Phase 0 ships a single mip-level; mipmapping is a polish task.
+            TextureSampler albedoSampler(
+                TextureSampler::MinFilter::LINEAR,
+                TextureSampler::MagFilter::LINEAR,
+                TextureSampler::WrapMode::REPEAT,
+                TextureSampler::WrapMode::CLAMP_TO_EDGE,
+                TextureSampler::WrapMode::CLAMP_TO_EDGE);
+            TextureSampler normalSampler = albedoSampler;
+            _materialInstance->setParameter("albedo", _albedoTex, albedoSampler);
+            _materialInstance->setParameter("normalMap", _normalTex, normalSampler);
+        }
+    }
+
+    // --- Mesh + renderable. Built once, after the material is ready. ---
+    if (_materialBuilt && _materialInstance && !_meshBuilt) {
+        std::vector<Vertex> vertices;
+        std::vector<uint16_t> indices;
+        generateSphereMesh(64, 32, vertices, indices);
+
+        const uint32_t vertexCount = (uint32_t)vertices.size();
+        const uint32_t indexCount = (uint32_t)indices.size();
+        const uint32_t stride = (uint32_t)sizeof(Vertex);
+
+        // Copy vertices into a heap buffer the BufferDescriptor will own.
+        auto* vbBytes = new std::vector<uint8_t>(vertexCount * stride);
+        std::memcpy(vbBytes->data(), vertices.data(), vbBytes->size());
+
+        _vertexBuffer = VertexBuffer::Builder()
+            .vertexCount(vertexCount)
+            .bufferCount(1)
+            .attribute(VertexAttribute::POSITION, 0,
+                       VertexBuffer::AttributeType::FLOAT3,
+                       (uint32_t)offsetof(Vertex, position), (uint8_t)stride)
+            .attribute(VertexAttribute::UV0, 0,
+                       VertexBuffer::AttributeType::FLOAT2,
+                       (uint32_t)offsetof(Vertex, uv), (uint8_t)stride)
+            .attribute(VertexAttribute::TANGENTS, 0,
+                       VertexBuffer::AttributeType::FLOAT4,
+                       (uint32_t)offsetof(Vertex, tangent), (uint8_t)stride)
+            .build(*_engine);
+        _vertexBuffer->setBufferAt(*_engine, 0,
+            VertexBuffer::BufferDescriptor(vbBytes->data(), vbBytes->size(),
+                                           &releaseStdVectorBytes, vbBytes));
+
+        auto* ibBytes = new std::vector<uint16_t>(indices);
+        _indexBuffer = IndexBuffer::Builder()
+            .indexCount(indexCount)
+            .bufferType(IndexBuffer::IndexType::USHORT)
+            .build(*_engine);
+        _indexBuffer->setBuffer(*_engine,
+            IndexBuffer::BufferDescriptor(ibBytes->data(),
+                                          ibBytes->size() * sizeof(uint16_t),
+                                          &releaseStdVectorIndices, ibBytes));
+        _indexCount = indexCount;
+
+        _moonEntity = EntityManager::get().create();
+        RenderableManager::Builder(1)
+            .boundingBox({{-1.0f, -1.0f, -1.0f}, {1.0f, 1.0f, 1.0f}})
+            .material(0, _materialInstance)
+            .geometry(0, RenderableManager::PrimitiveType::TRIANGLES,
+                      _vertexBuffer, _indexBuffer, 0, indexCount)
+            .culling(true)
+            .receiveShadows(false)
+            .castShadows(false)
+            .build(*_engine, _moonEntity);
+        _scene->addEntity(_moonEntity);
+
+        _meshBuilt = YES;
+    }
+}
+
+- (void)renderloop {
+    if (_engine == nullptr || !_running) return;
+
+    // Apply pulled state.
+    const float yaw = _yaw.load();
+    const float pitch = _pitch.load();
+    const float distance = _distance.load();
+
+    const float cp = std::cos(pitch);
+    const double3 eye = {
+        (double)(distance * cp * std::sin(yaw)),
+        (double)(distance * std::sin(pitch)),
+        (double)(distance * cp * std::cos(yaw))
+    };
+    const double3 center = { 0.0, 0.0, 0.0 };
+    const double3 up = { 0.0, 1.0, 0.0 };
+    if (_camera) {
+        _camera->lookAt(eye, center, up);
+    }
+
+    // Sun direction → directional light. Filament wants the direction the
+    // photons travel (away from the source), so negate the lit-from vector.
+    if (_sunEntity) {
+        auto& lcm = _engine->getLightManager();
+        auto inst = lcm.getInstance(_sunEntity);
+        if (inst) {
+            float sx = _sunX.load(), sy = _sunY.load(), sz = _sunZ.load();
+            const float len = std::sqrt(sx*sx + sy*sy + sz*sz);
+            if (len > 1e-4f) { sx /= len; sy /= len; sz /= len; }
+            else { sx = 0.0f; sy = 0.0f; sz = 1.0f; }
+            // sunDirection is "where the sun is" → light travels in -sunDir.
+            lcm.setDirection(inst, { -sx, -sy, -sz });
+        }
+    }
+
+    // Moon spin around its rotation axis (Y).
+    if (_moonEntity) {
+        auto& tcm = _engine->getTransformManager();
+        auto inst = tcm.getInstance(_moonEntity);
+        if (inst) {
+            const float r = _moonRotation.load();
+            const float c = std::cos(r);
+            const float s = std::sin(r);
+            mat4f m{
+                float4{ c,    0.0f, -s,   0.0f},
+                float4{ 0.0f, 1.0f,  0.0f, 0.0f},
+                float4{ s,    0.0f,  c,   0.0f},
+                float4{ 0.0f, 0.0f,  0.0f, 1.0f}
+            };
+            tcm.setTransform(inst, m);
+        }
+    }
+
+    // Submit the frame.
+    if (_renderer->beginFrame(_swapChain)) {
+        _renderer->render(_view);
+        _renderer->endFrame();
+    }
+}
+
+@end

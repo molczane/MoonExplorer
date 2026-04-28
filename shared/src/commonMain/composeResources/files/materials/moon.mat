@@ -1,0 +1,54 @@
+// Moon Explorer — Phase 0 spike material.
+//
+// PBR lit shading model with an sRGB albedo sampler and a linear-space
+// tangent-space normal-map sampler. Compiled by `:shared:compileMaterials`
+// (matc -a all -p mobile) into moon.filamat, loaded at runtime via
+// Res.readBytes("files/materials/moon.filamat").
+//
+// Real NASA textures + KTX2 packaging come in 02-moon-renderer-mvp; the
+// spike uses PNG placeholders (a colored-quadrant lat/lon grid for albedo,
+// flat normals for the normal map).
+
+material {
+    name : moon,
+
+    parameters : [
+        {
+            type : sampler2d,
+            name : albedo
+        },
+        {
+            type : sampler2d,
+            name : normalMap
+        }
+    ],
+
+    requires : [
+        position,
+        uv0,
+        tangents
+    ],
+
+    shadingModel : lit,
+    blending : opaque
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        // Sample the tangent-space normal first so prepareMaterial picks it up.
+        // Encoding: RGB ∈ [0,1] decodes to xyz ∈ [-1,1].
+        vec2 uv = getUV0();
+        vec3 n = texture(materialParams_normalMap, uv).rgb * 2.0 - 1.0;
+        material.normal = n;
+
+        prepareMaterial(material);
+
+        // sRGB albedo. The texture is uploaded with a sRGB internal format,
+        // so the sampler returns linear RGB — no manual conversion needed.
+        material.baseColor = texture(materialParams_albedo, uv);
+
+        // The Moon is matte and non-metallic.
+        material.metallic = 0.0;
+        material.roughness = 0.95;
+    }
+}

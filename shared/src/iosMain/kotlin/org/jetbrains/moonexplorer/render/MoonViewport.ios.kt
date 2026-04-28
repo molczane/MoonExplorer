@@ -1,21 +1,35 @@
 package org.jetbrains.moonexplorer.render
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.viewinterop.UIKitViewController
+import kotlinx.cinterop.ExperimentalForeignApi
 import org.jetbrains.moonexplorer.state.MoonRenderState
 
 /**
- * Phase 2 stub. Replaced by the Filament-backed UIKitViewController host in
- * Phase 3 (T034 MoonRendererProvider + T035 MoonViewport.ios.kt — full
- * closure-injection bridge per ADR-0002 §"Bridge pattern").
+ * iOS actual for the renderer-host seam (ADR-0003). The platform host is the
+ * Swift `MoonRendererViewController` (in iosApp/), wired in via
+ * [MoonRendererProvider] closures (ADR-0002 §"Bridge pattern: closure
+ * injection from Swift").
  *
- * The stub intentionally ignores `state` so it stays a pure visual placeholder
- * that never accidentally becomes part of the test surface.
+ * Per-frame state delivery is pull-not-push (ADR-0003): each `update` call —
+ * which Compose triggers when `state` changes — pushes the latest yaw / pitch /
+ * distance / sun direction / moon rotation through the provider closures.
+ * The Swift CADisplayLink reads them inside its `renderloop` selector.
  */
+@OptIn(ExperimentalForeignApi::class)
 @Composable
 actual fun MoonViewport(state: MoonRenderState, modifier: Modifier) {
-    Box(modifier = modifier.background(Color(0xFF1A1A1A)))
+    val vc = remember { MoonRendererProvider.factory() }
+    UIKitViewController(
+        factory = { vc },
+        update = {
+            MoonRendererProvider.applyCamera(state.cameraYawRad, state.cameraPitchRad, state.cameraDistance)
+            MoonRendererProvider.applySunDirection(state.sunDirection.x, state.sunDirection.y, state.sunDirection.z)
+            MoonRendererProvider.applyMoonRotation(state.moonRotationRad)
+        },
+        onRelease = { MoonRendererProvider.dispose() },
+        modifier = modifier,
+    )
 }
