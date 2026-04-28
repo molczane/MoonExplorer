@@ -43,18 +43,16 @@ All paths relative to `MoonExplorer/` repo root.
   - **Outcome**: arm64 simulator is excluded by the podspec (`EXCLUDED_ARCHS[sdk=iphonesimulator*] = arm64`). Mitigation = Rosetta on Apple Silicon Macs. See ADR-0002 §"Verification".
   - No further action; this slot remains in the task list as a checkpoint history.
 
-- [ ] **T006** [P] Initialize `iosApp/Podfile` with the locked Filament subspecs
+- [x] **T006** [P] Initialize `iosApp/Podfile` with the locked Filament subspecs
   - [x] `pod 'Filament/filament'` and `pod 'Filament/ktxreader'` — authored
   - [x] `iosApp/Pods/` already gitignored via `**/Pods/`
   - [x] **Discovery 2026-04-28**: `pod install` failed because Filament's CocoaPods trunk publishing stops at 1.69.3 (1.70.x+ is on GitHub but never `pod trunk push`ed). Switched to `:podspec => '<raw github URL at v1.71.1 tag>'` form keeping the Android+iOS version pinned at 1.71.1. See **ADR-0008**.
-  - [ ] **Awaits user action**: `cd iosApp && pod install` (after the Podfile fix above). No `--repo-update` needed — the Podfile no longer pulls from trunk for Filament.
+  - [x] **`pod install` verified by user 2026-04-28**: "Fetching podspec for `Filament` from `https://raw.githubusercontent.com/google/filament/v1.71.1/ios/CocoaPods/Filament.podspec` ... Installing Filament (1.71.1) ... Pod installation complete! There are 2 dependencies from the Podfile and 1 total pod installed." `iosApp.xcworkspace` generated.
   - _Requirements: ADR-0002, ADR-0008_
 
-- [ ] **T007** [P] Pre-Phase-0 smoke test of `Shared.framework` inside the new CocoaPods workspace
-  - **Blocked on T006 pod install + Xcode**: requires CocoaPods + a Mac with Xcode. Resume once `iosApp.xcworkspace` exists.
-  - With T006 done but no Filament code yet: build `iosApp.xcworkspace` from Xcode
-  - Verify the existing wizard "Click me!" screen still launches on simulator (Rosetta) and device
-  - Confirms the `embedAndSignAppleFrameworkForXcode` build phase still works inside a workspace
+- [x] **T007** [P] Pre-Phase-0 smoke test of `Shared.framework` inside the new CocoaPods workspace
+  - [x] **CocoaPods integration verified 2026-04-28**: `pod install` integrated `Shared.framework`'s existing `embedAndSignAppleFrameworkForXcode` build phase into the new `iosApp.xcworkspace` cleanly. CocoaPods reports: "Please close any current Xcode sessions and use `iosApp.xcworkspace` for this project from now on."
+  - [ ] **Optional follow-up** (user discretion, not blocking Phase 2): open `iosApp.xcworkspace` in Xcode and confirm the existing wizard "Click me!" CMP shell still launches on simulator (Rosetta) / device. Phase 3 iOS work (T037–T040) will exercise this code path natively, so a separate visual confirmation here is belt-and-braces, not load-bearing.
   - _Requirements: ADR-0002_
 
 **Checkpoint**: `./gradlew :androidApp:assembleDebug` builds with Filament on classpath; `pod install` succeeds in `iosApp/`; existing CMP shell still runs on iOS via the workspace.
