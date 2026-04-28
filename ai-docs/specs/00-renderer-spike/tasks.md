@@ -113,20 +113,22 @@ All paths relative to `MoonExplorer/` repo root.
 
 ### Tests for Phase 2
 
-- [ ] **T020** [P] [US1] `commonTest`: `MoonMathTest.latLonToCartesian`
+- [x] **T020** [P] [US1] `commonTest`: `MoonMathTest.latLonToCartesian`
   - Cases: (0,0)→(0,0,1); (0,90)→(1,0,0); (90,0)→(0,1,0); Apollo 11 (0.674,23.473)→(0.398,0.012,0.917) within 1e-3
+  - Plus a unit-length sanity sweep across a 9×9 lat/lon grid (5 tests total, all green on Android JVM + iOS sim arm64).
   - _Requirements: ADR-0006, FR-001_
 
-- [ ] **T021** [P] [US1] `commonTest`: `UvSphereTest.generate`
-  - Vertex count = (segments+1)·(rings+1); `|p|` ≈ 1.0 ±1e-5 for all positions; tangent⊥normal
+- [x] **T021** [P] [US1] `commonTest`: `UvSphereTest.generate`
+  - Vertex count = (segments+1)·(rings+1); index count = segments·rings·6; `|p|` ≈ 1.0 ±1e-5 for all positions; normals == positions on unit sphere; tangent⊥normal
+  - Plus minimal-mesh + IllegalArgumentException coverage on segments<3 / rings<2 (8 tests total, all green).
   - _Requirements: FR-001_
 
-- [ ] **T022** [P] [US1] `commonTest`: `MoonViewModelTest.onPinchClampsDistance`
-  - Pinching repeatedly never goes below 1.5 or above 20
+- [x] **T022** [P] [US1] `commonTest`: `MoonViewModelTest.onPinchClampsDistance`
+  - Pinching repeatedly never goes below 1.5 or above 20; zoom-in halves distance, zoom-out doubles; invalid scales (≤0) are no-ops (5 tests, all green).
   - _Requirements: FR-003_
 
-- [ ] **T023** [P] [US1] `commonTest`: `MoonViewModelTest.onDragUpdatesYawAndPitch`
-  - Drag right → yaw decreases; drag down → pitch increases; pitch clamped at ±89°
+- [x] **T023** [P] [US1] `commonTest`: `MoonViewModelTest.onDragUpdatesYawAndPitch`
+  - Drag right → yaw decreases; drag down → pitch increases; pitch clamps at ±PITCH_LIMIT_RAD (~±89.4°) at both ends; invalid viewport / fovY are no-ops (5 tests, all green; co-located in the same `MoonViewModelTest` file as T022 → 10 tests in that suite).
   - _Requirements: FR-002_
 
 **Checkpoint**: `./gradlew :shared:allTests` passes. App builds but `MoonViewport` `actual` is unimplemented — won't run yet on either platform.
