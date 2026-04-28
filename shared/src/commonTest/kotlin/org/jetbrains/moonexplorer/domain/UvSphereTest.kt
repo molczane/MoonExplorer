@@ -51,13 +51,21 @@ class UvSphereTest {
     }
 
     @Test
-    fun generate_tangentsOrthogonalToNormals() {
+    fun generate_tangentsArePackedUnitQuaternions() {
+        // Tangents now ship as packed TBN quaternions (FLOAT4 xyzw) so Android
+        // and iOS feed Filament the same encoding (matches MoonRenderer.mm's
+        // `packTangentFrame`). Invariant we check: each quaternion is unit-length.
         val mesh = UvSphere.generate(segments = 32, rings = 16)
-        val normals = readVec3Array(mesh.normals, mesh.vertexCount)
-        val tangents = readVec3Array(mesh.tangents, mesh.vertexCount)
+        val expectedSize = mesh.vertexCount * 4 * Float.SIZE_BYTES
+        assertEquals(expectedSize, mesh.tangents.size, "tangents buffer should be FLOAT4 per vertex")
         for (i in 0 until mesh.vertexCount) {
-            val nDotT = normals[i].dot(tangents[i])
-            assertTrue(abs(nDotT) < TOL, "vertex $i: normal·tangent = $nDotT, expected ≈ 0")
+            val p = i * 4 * Float.SIZE_BYTES
+            val qx = readFloat(mesh.tangents, p)
+            val qy = readFloat(mesh.tangents, p + 4)
+            val qz = readFloat(mesh.tangents, p + 8)
+            val qw = readFloat(mesh.tangents, p + 12)
+            val mag = kotlin.math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+            assertTrue(abs(mag - 1f) < TOL, "vertex $i: |tangent quat| = $mag, expected ≈ 1")
         }
     }
 

@@ -75,6 +75,12 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     private val moonEntity: Int
     private var swapChain: SwapChain? = null
 
+    // Cached LightManager + TransformManager handles. Filled in after the
+    // entities are built so the per-frame `apply*` calls skip re-fetching
+    // `getInstance` each tick (Phase 3 review #7).
+    private var lightInstance: Int = 0
+    private var moonTransformInstance: Int = 0
+
     // --- State delivered from Compose (read each Choreographer tick) ---
     @Volatile
     private var currentState: MoonRenderState = MoonRenderState()
@@ -106,6 +112,10 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         view.camera = camera
 
         // --- 1. Material + textures ---------------------------------------------------
+        // Phase 0 spike loads tiny bundled assets (~750 KB material + 8 KB PNGs)
+        // synchronously on the UI thread. Acceptable jank budget for a spike;
+        // 02-moon-renderer-mvp will hoist these into a `LaunchedEffect` async load
+        // (Phase 3 review #9, also noted in tasks.md T032).
         val matBytes = runBlocking { Res.readBytes(MATERIAL_PATH) }
         material = Material.Builder()
             .payload(ByteBuffer.wrap(matBytes), matBytes.size)
@@ -166,6 +176,10 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             .build(engine, lightEntity)
         scene.addEntity(lightEntity)
 
+        // Cache the per-frame instance handles (Phase 3 review #7).
+        lightInstance = engine.lightManager.getInstance(lightEntity)
+        moonTransformInstance = engine.transformManager.getInstance(moonEntity)
+
         // --- 5. View defaults --------------------------------------------------------
         view.blendMode = View.BlendMode.OPAQUE
         renderer.clearOptions = renderer.clearOptions.apply {
@@ -177,6 +191,11 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         val width = surfaceView.width.coerceAtLeast(1)
         val height = surfaceView.height.coerceAtLeast(1)
         updateCameraProjection(width, height)
+        // Explicit exposure for cross-platform parity with iOS (Phase 3 review #2).
+        // Filament's default is f/16 ISO 100 1/125s — the same values, but stating
+        // them keeps the two renderers visually aligned and protects against any
+        // future Filament default change.
+        camera.setExposure(16.0f, 1.0f / 125.0f, 100.0f)
 
         // --- 6. UiHelper wiring -----------------------------------------------------
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
@@ -253,20 +272,17 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     }
 
     private fun applySunDirection(state: MoonRenderState) {
-        val lm = engine.lightManager
-        val instance = lm.getInstance(lightEntity)
-        if (instance != 0) {
-            // Filament directional light "direction" points FROM the light source —
-            // negate sunDirection so a vector pointing toward the lit hemisphere
-            // becomes the light's travel vector.
-            lm.setDirection(instance, -state.sunDirection.x, -state.sunDirection.y, -state.sunDirection.z)
-        }
+        if (lightInstance == 0) return
+        // Filament's directional-light direction is the photon travel vector;
+        // ADR-0006 sunDirection points from Moon → Sun, so negate.
+        engine.lightManager.setDirection(
+            lightInstance,
+            -state.sunDirection.x, -state.sunDirection.y, -state.sunDirection.z,
+        )
     }
 
     private fun applyMoonRotation(state: MoonRenderState) {
-        val tm: TransformManager = engine.transformManager
-        val transformInstance = tm.getInstance(moonEntity)
-        if (transformInstance == 0) return
+        if (moonTransformInstance == 0) return
         // Y-axis rotation only (selenographic spin).
         val cos = kotlin.math.cos(state.moonRotationRad)
         val sin = kotlin.math.sin(state.moonRotationRad)
@@ -276,7 +292,7 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             sin, 0f,  cos, 0f,
             0f,  0f,   0f, 1f,
         )
-        tm.setTransform(transformInstance, matrix)
+        engine.transformManager.setTransform(moonTransformInstance, matrix)
     }
 
     private fun updateCameraProjection(width: Int, height: Int) {
@@ -297,9 +313,9 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
      */
     fun destroy() {
         removeFrameCallback()
-
-        // Stop sending work to the GPU before destruction.
-        engine.flushAndWait()
+        // No explicit `engine.flushAndWait()` here — `uiHelper.detach()` below
+        // already calls flushAndWait internally before destroying the SwapChain
+        // (per filament-cmp-integration.md §1). Phase 3 review #8.
 
         scene.removeEntity(renderableEntity)
         scene.removeEntity(lightEntity)
@@ -333,15 +349,19 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     // -----------------------------------------------------------------------------
 
     private fun buildVertexBuffer(engine: Engine, mesh: UvSphere.Mesh): VertexBuffer {
-        // Three separate buffers: positions (FLOAT3), tangents (FLOAT3), uvs (FLOAT2).
-        // We omit a NORMAL attribute because the Moon material reads its normal from
-        // the normal-map sampler in tangent space. Position+UV+tangents covers the
-        // material's `requires` list (see moon.mat).
+        // Three separate buffers: positions (FLOAT3), packed-quat tangents (FLOAT4),
+        // uvs (FLOAT2). We omit a NORMAL attribute because the Moon material reads
+        // its normal from the normal-map sampler in tangent space; Position + UV +
+        // packed-quat tangent covers the material's `requires` list (see moon.mat).
+        // The FLOAT4 quaternion encoding matches iOS (MoonRenderer.mm's
+        // packTangentFrame) and is the format Filament's PBR shader expects for
+        // TBN-decoded normal maps (Phase 3 review #4 — was previously FLOAT3,
+        // which only happened to render correctly with the flat normal map).
         val vb = VertexBuffer.Builder()
             .vertexCount(mesh.vertexCount)
             .bufferCount(3)
             .attribute(VertexBuffer.VertexAttribute.POSITION, 0, VertexBuffer.AttributeType.FLOAT3)
-            .attribute(VertexBuffer.VertexAttribute.TANGENTS, 1, VertexBuffer.AttributeType.FLOAT3)
+            .attribute(VertexBuffer.VertexAttribute.TANGENTS, 1, VertexBuffer.AttributeType.FLOAT4)
             .attribute(VertexBuffer.VertexAttribute.UV0, 2, VertexBuffer.AttributeType.FLOAT2)
             .build(engine)
 
@@ -394,6 +414,14 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         return texture
     }
 
+    /**
+     * Wrap a `ByteArray` in a direct `ByteBuffer`. The `order(nativeOrder())`
+     * call is cosmetic for our usage — `put(ByteArray)` copies bytes verbatim
+     * and Filament's JNI reads the raw memory directly (no `getFloat()`-style
+     * accessors). UvSphere already encodes floats little-endian, which matches
+     * every Android device's native order. Kept for documentation value (Phase
+     * 3 review #11).
+     */
     private fun wrapDirect(src: ByteArray): Buffer {
         val direct = ByteBuffer.allocateDirect(src.size).order(ByteOrder.nativeOrder())
         direct.put(src)

@@ -31,7 +31,6 @@
 #include <utils/Entity.h>
 #include <utils/EntityManager.h>
 
-#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -215,16 +214,19 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     BOOL _materialBuilt;
     BOOL _meshBuilt;
 
-    // Cached state, written by setters from any thread, read on the main
-    // thread inside renderloop. atomic<float> is overkill (ARM aligned 32-bit
-    // loads/stores are atomic) but keeps Thread Sanitizer quiet.
-    std::atomic<float> _yaw;
-    std::atomic<float> _pitch;
-    std::atomic<float> _distance;
-    std::atomic<float> _sunX;
-    std::atomic<float> _sunY;
-    std::atomic<float> _sunZ;
-    std::atomic<float> _moonRotation;
+    // Cached state. **All access is on the main thread** — both the setters
+    // (called from Compose's `update` lambda via the Kotlin `MoonRendererProvider`
+    // closures) and the reader (`renderloop`, driven by CADisplayLink on the
+    // main run loop) share the main thread. No atomicity needed (Phase 3 review
+    // #5). If a future setter is ever called off-main, switch to a single
+    // atomically-swapped POD struct rather than re-atomicising each field.
+    float _yaw;
+    float _pitch;
+    float _distance;
+    float _sunX;
+    float _sunY;
+    float _sunZ;
+    float _moonRotation;
 }
 
 - (instancetype)initWithLayer:(CALayer *)layer {
@@ -238,13 +240,13 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     _indexCount = 0;
 
     // Initial state matches MoonRenderState defaults.
-    _yaw.store(0.0f);
-    _pitch.store(0.0f);
-    _distance.store(5.0f);
-    _sunX.store(0.0f);
-    _sunY.store(0.0f);
-    _sunZ.store(1.0f);
-    _moonRotation.store(0.0f);
+    _yaw = 0.0f;
+    _pitch = 0.0f;
+    _distance = 5.0f;
+    _sunX = 0.0f;
+    _sunY = 0.0f;
+    _sunZ = 1.0f;
+    _moonRotation = 0.0f;
 
     // --- Engine + SwapChain (CAMetalLayer) ---
     _engine = Engine::create(Engine::Backend::METAL);
@@ -259,10 +261,16 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     _scene = _engine->createScene();
     _view = _engine->createView();
     _view->setScene(_scene);
-    _view->setPostProcessingEnabled(false); // Phase 0 spike: skip post.
+    // Post-processing left at Filament default (ON) — tone-mapping + gamma are
+    // load-bearing for sRGB output. Was `setPostProcessingEnabled(false)` in
+    // the initial Phase 3 cut, which made iOS visually diverge from Android
+    // (Phase 3 review #1).
 
     _cameraEntity = EntityManager::get().create();
     _camera = _engine->createCamera(_cameraEntity);
+    // Explicit exposure for cross-platform parity with Android (Phase 3
+    // review #2). Filament's default is f/16 ISO 100 1/125s — same values,
+    // but stating them protects against future Filament default changes.
     _camera->setExposure(16.0f, 1.0f / 125.0f, 100.0f);
     _view->setCamera(_camera);
 
@@ -276,9 +284,11 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
                            Camera::Fov::VERTICAL);
 
     // --- Sun light (a single directional). Scene only — no IBL in Phase 0. ---
+    // Color matches Android (1.0, 0.96, 0.92) — slightly warm white, the
+    // plausible color of unattenuated sunlight (Phase 3 review #3).
     _sunEntity = EntityManager::get().create();
     LightManager::Builder(LightManager::Type::DIRECTIONAL)
-        .color({ 1.0f, 1.0f, 1.0f })
+        .color({ 1.0f, 0.96f, 0.92f })
         .intensity(110000.0f) // bright outdoor sunlight
         .direction({ 0.0f, 0.0f, -1.0f })
         .castShadows(false)
@@ -363,25 +373,30 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
 }
 
 - (void)setCameraYaw:(float)yaw pitch:(float)pitch distance:(float)distance {
-    _yaw.store(yaw);
-    _pitch.store(pitch);
-    _distance.store(distance);
+    _yaw = yaw;
+    _pitch = pitch;
+    _distance = distance;
 }
 
 - (void)setSunDirectionX:(float)x y:(float)y z:(float)z {
-    _sunX.store(x);
-    _sunY.store(y);
-    _sunZ.store(z);
+    _sunX = x;
+    _sunY = y;
+    _sunZ = z;
 }
 
 - (void)setMoonRotation:(float)rotation {
-    _moonRotation.store(rotation);
+    _moonRotation = rotation;
 }
 
 - (void)loadAssetsAlbedo:(NSData *)albedo
                   normal:(NSData *)normal
                 material:(NSData *)material {
     if (_engine == nullptr) return;
+
+    // TODO(02-moon-renderer-mvp): hot-reload support. The current asset
+    // upload guards on `_albedoTex == nullptr` etc., so a second loadAssets
+    // call (e.g., HD texture streaming) is silently ignored. Resolve by
+    // destroying the previous texture before re-uploading. Phase 3 review #6.
 
     // --- Material: build once. The .filamat blob is parsed by Filament. ---
     if (!_materialBuilt && material.length > 0) {
@@ -515,10 +530,11 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
 - (void)renderloop {
     if (_engine == nullptr || !_running) return;
 
-    // Apply pulled state.
-    const float yaw = _yaw.load();
-    const float pitch = _pitch.load();
-    const float distance = _distance.load();
+    // Apply pulled state. Both setters and this reader run on the main thread
+    // (Compose update → CADisplayLink → renderloop). Plain reads are safe.
+    const float yaw = _yaw;
+    const float pitch = _pitch;
+    const float distance = _distance;
 
     const float cp = std::cos(pitch);
     const double3 eye = {
@@ -534,16 +550,14 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
 
     // Sun direction → directional light. Filament wants the direction the
     // photons travel (away from the source), so negate the lit-from vector.
+    // Phase 3 review #10: dropped the defensive normalization step — the
+    // shared MoonViewModel only emits unit-length sun directions
+    // (joystickToHemisphereDir lifts onto the unit hemisphere).
     if (_sunEntity) {
         auto& lcm = _engine->getLightManager();
         auto inst = lcm.getInstance(_sunEntity);
         if (inst) {
-            float sx = _sunX.load(), sy = _sunY.load(), sz = _sunZ.load();
-            const float len = std::sqrt(sx*sx + sy*sy + sz*sz);
-            if (len > 1e-4f) { sx /= len; sy /= len; sz /= len; }
-            else { sx = 0.0f; sy = 0.0f; sz = 1.0f; }
-            // sunDirection is "where the sun is" → light travels in -sunDir.
-            lcm.setDirection(inst, { -sx, -sy, -sz });
+            lcm.setDirection(inst, { -_sunX, -_sunY, -_sunZ });
         }
     }
 
@@ -552,7 +566,7 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
         auto& tcm = _engine->getTransformManager();
         auto inst = tcm.getInstance(_moonEntity);
         if (inst) {
-            const float r = _moonRotation.load();
+            const float r = _moonRotation;
             const float c = std::cos(r);
             const float s = std::sin(r);
             mat4f m{
