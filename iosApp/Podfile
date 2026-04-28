@@ -12,9 +12,14 @@
 # A future Filament version bump means updating FILAMENT_PODSPEC + libs.versions.toml
 # together. See ADR-0008 for full reasoning.
 #
-# Subspec selection locked for Phase 0/1: core engine + KTX2 reader only.
-# We deliberately skip Filament/filamat (we pre-compile via matc),
-# Filament/gltfio_core (procedural UV sphere), and Filament/viewer.
+# Subspec selection for Phase 0/1: core engine + KTX2 reader + uberz.
+# uberz vendors libzstd.a which Filament's main library uses internally to
+# decompress .filamat blobs at runtime — without it the linker fails with
+# undefined ZSTD_decompress / ZSTD_getFrameContentSize / ZSTD_isError.
+# (uberz transitively pulls Filament/filamat as a side effect; small bloat
+# we accept since the dependency chain is upstream's packaging design.)
+# We deliberately skip Filament/gltfio_core (procedural UV sphere) and
+# Filament/viewer.
 #
 # Apple Silicon Mac developers: the Filament pod excludes the arm64 simulator
 # slice. Run the simulator under Rosetta — see iosApp/README.md (T092).
@@ -28,6 +33,7 @@ target 'iosApp' do
   use_frameworks!
   pod 'Filament/filament',  :podspec => FILAMENT_PODSPEC
   pod 'Filament/ktxreader', :podspec => FILAMENT_PODSPEC
+  pod 'Filament/uberz',     :podspec => FILAMENT_PODSPEC
 end
 
 post_install do |installer|

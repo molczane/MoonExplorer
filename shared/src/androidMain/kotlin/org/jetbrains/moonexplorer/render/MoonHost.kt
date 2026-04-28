@@ -11,6 +11,7 @@ import com.google.android.filament.Box
 import com.google.android.filament.Camera
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
+import com.google.android.filament.Filament
 import com.google.android.filament.IndexBuffer
 import com.google.android.filament.LightManager
 import com.google.android.filament.Material
@@ -401,6 +402,16 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     }
 
     private companion object {
+        init {
+            // Load libfilament-jni.so once per process. Without this, the first
+            // native call (Engine.create() in instance init) throws
+            // UnsatisfiedLinkError — Filament 1.71.x deliberately doesn't
+            // auto-init from any class's static block; consumers call
+            // Filament.init() explicitly. The companion's class-load init runs
+            // before any MoonHost instance's primary constructor.
+            Filament.init()
+        }
+
         const val SPHERE_SEGMENTS = 64
         const val SPHERE_RINGS = 32
         const val BOUNDING_HALF_EXTENT = 1.05f
