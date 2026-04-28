@@ -13,25 +13,30 @@ All paths relative to `MoonExplorer/` repo root.
 
 ## Phase 1: Setup
 
-- [ ] **T001** [P] Add Filament version + library aliases to `gradle/libs.versions.toml`
+- [x] **T001** [P] Add Filament version + library aliases to `gradle/libs.versions.toml`
   - `filament = "1.71.1"` under `[versions]`
   - `filament-android` and `filament-utils-android` under `[libraries]`
   - _Requirements: ADR-0001, ADR-0002, tech-stack.md_
 
-- [ ] **T002** Add Filament deps to `:shared/androidMain.dependencies` in `shared/build.gradle.kts`
+- [x] **T002** Add Filament deps to `:shared/androidMain.dependencies` in `shared/build.gradle.kts`
   - `implementation(libs.filament.android)`
   - `implementation(libs.filament.utils.android)`
+  - Verified: `./gradlew :shared:dependencies --configuration androidCompileClasspath` resolves Filament + transitive `gltfio-android`. `./gradlew :androidApp:assembleDebug` packages `libfilament-jni.so`, `libfilament-utils-jni.so`, `libgltfio-jni.so`.
   - _Requirements: ADR-0001, FR-005_
 
-- [ ] **T003** [P] Vendor `matc` binary under `tools/matc/`
-  - Download from Filament 1.71.1 release tarball (Mac + Linux variants)
-  - Include `LICENSE` note (Apache 2.0)
+- [x] **T003** [P] ~~Vendor `matc` binary under `tools/matc/`~~ → **Download on demand** (revised 2026-04-28 with user approval)
+  - **Deviation from original spec**: vendoring ~60 MB of matc binaries to git was deemed too costly. Replaced with a `downloadFilamentTools` Gradle task that fetches matc for the host OS (Mac/Linux) into `tools/matc/<version>/<os>/matc` on first build. The cache directory is gitignored (`tools/matc/`).
+  - Filament version is pinned in `gradle/libs.versions.toml`; that single source drives both the Maven Android deps and the matc download URL.
+  - Implementation: `:shared/build.gradle.kts` `downloadFilamentTools` task (group `filament`).
+  - Tarball is downloaded from `https://github.com/google/filament/releases/download/v<version>/filament-v<version>-<os>.tgz`, only `filament/bin/matc` is extracted, the rest is discarded. Idempotent via `onlyIf { !matc.exists() }`.
+  - Verified: `./gradlew :shared:downloadFilamentTools` produces `tools/matc/1.71.1/mac/matc` (~11 MB), executable, `--help` works.
   - _Requirements: ADR-0001, FR-005_
 
-- [ ] **T004** Add `compileMaterials` Gradle `Exec` task to `shared/build.gradle.kts`
+- [x] **T004** Add `compileMaterials` Gradle `Exec` task to `shared/build.gradle.kts`
   - Reads: `shared/src/commonMain/composeResources/files/materials/moon.mat`
   - Outputs: `shared/build/generated/filamat/moon.filamat`, then copies into `composeResources/files/materials/`
-  - Wired as a dependency of Compose resource processing
+  - Wired as a dependency of `processAndroidMainResources*`, `syncComposeResourcesForIos*`, and `generateComposeResClass`. `onlyIf { moon.mat exists }` makes it a no-op until T030 creates the source file.
+  - Depends on `downloadFilamentTools` so matc is fetched before first run.
   - _Requirements: FR-005_
 
 - [ ] **T005** ~~Verify `Filament.podspec` simulator-arm64 status~~ ✅ Resolved 2026-04-28
@@ -39,13 +44,14 @@ All paths relative to `MoonExplorer/` repo root.
   - No further action; this slot remains in the task list as a checkpoint history.
 
 - [ ] **T006** [P] Initialize `iosApp/Podfile` with the locked Filament subspecs
-  - `pod 'Filament/filament', '~> 1.71.1'`
-  - `pod 'Filament/ktxreader', '~> 1.71.1'`
-  - Run `pod install` in `iosApp/`; verify `iosApp.xcworkspace` is generated
-  - Add `iosApp/Pods/` to `.gitignore` if not already
+  - [x] `pod 'Filament/filament', '~> 1.71.1'` — authored
+  - [x] `pod 'Filament/ktxreader', '~> 1.71.1'` — authored
+  - [x] `iosApp/Pods/` already gitignored via `**/Pods/`
+  - [ ] **Awaits user action**: `brew install cocoapods` (CocoaPods is not installed on this dev machine), then `cd iosApp && pod install`. The Podfile also runs a `post_install` hook bumping the pods' `IPHONEOS_DEPLOYMENT_TARGET` to 13.0 to align with the app.
   - _Requirements: ADR-0002_
 
 - [ ] **T007** [P] Pre-Phase-0 smoke test of `Shared.framework` inside the new CocoaPods workspace
+  - **Blocked on T006 pod install + Xcode**: requires CocoaPods + a Mac with Xcode. Resume once `iosApp.xcworkspace` exists.
   - With T006 done but no Filament code yet: build `iosApp.xcworkspace` from Xcode
   - Verify the existing wizard "Click me!" screen still launches on simulator (Rosetta) and device
   - Confirms the `embedAndSignAppleFrameworkForXcode` build phase still works inside a workspace

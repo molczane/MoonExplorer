@@ -1,0 +1,29 @@
+# Moon Explorer — iOS Podfile
+#
+# Filament-on-iOS via Swift-side hosting. See:
+#   ai-docs/decisions/0002-filament-ios-distribution.md
+#
+# Subspec selection locked for Phase 0/1: core engine + KTX2 reader only.
+# We deliberately skip Filament/filamat (we pre-compile via matc),
+# Filament/gltfio_core (procedural UV sphere), and Filament/viewer.
+#
+# Apple Silicon Mac developers: the Filament pod excludes the arm64 simulator
+# slice. Run the simulator under Rosetta — see iosApp/README.md.
+
+platform :ios, '13.0'
+inhibit_all_warnings!
+
+target 'iosApp' do
+  use_frameworks!
+  pod 'Filament/filament',  '~> 1.71.1'
+  pod 'Filament/ktxreader', '~> 1.71.1'
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # Align pod deployment target with the app's; pod ships at 11.0.
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+    end
+  end
+end
