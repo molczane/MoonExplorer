@@ -13,7 +13,14 @@ import platform.UIKit.UIViewController
  * no iOS-app wiring.
  */
 object MoonRendererProvider {
+    private var _factoryWired: Boolean = false
+
     var factory: () -> UIViewController = { UIViewController() }
+        set(value) {
+            _factoryWired = true
+            field = value
+        }
+
     var applyCamera: (yawRad: Float, pitchRad: Float, distance: Float) -> Unit = { _, _, _ -> }
     var applySunDirection: (x: Float, y: Float, z: Float) -> Unit = { _, _, _ -> }
     var applyMoonRotation: (rotationRad: Float) -> Unit = { _ -> }
@@ -25,4 +32,13 @@ object MoonRendererProvider {
      *  renderer rebinds the material's `albedo` sampler when the variant changes. */
     var applyAlbedoVariant: (variant: Int) -> Unit = { _ -> }
     var dispose: () -> Unit = {}
+
+    /**
+     * Phase Final (T091). True once Swift has assigned [factory]. False
+     * indicates the iOS app forgot to wire `MoonRendererProvider` in
+     * `iOSApp.init()` — the Filament renderer will not start.
+     * `MoonViewport.ios.kt` logs a warning at first composition when this
+     * is still false (visible in the Xcode console / Console.app).
+     */
+    val isFactoryWired: Boolean get() = _factoryWired
 }

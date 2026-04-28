@@ -277,17 +277,25 @@ All paths relative to `MoonExplorer/` repo root.
 
 ## Phase Final: Polish & Documentation
 
-- [ ] **T090** Document any deviations from ADRs in either a follow-up ADR or an update to `architecture.md` / `tech-stack.md`
+- [x] **T090** Document any deviations from ADRs in either a follow-up ADR or an update to `architecture.md` / `tech-stack.md`
+  - Filed as **ADR-0009** (`ai-docs/decisions/0009-spike-deviations.md`) — consolidated index of seven spike deviations: PNG-instead-of-KTX2 (T031), state-driven albedo swap (T060), Android tangent format temporary divergence (Phase 3 review #4), `Filament/uberz` subspec (Phase 3 review fix-up), `Filament.init()` requirement on Android (Phase 3 fix-up), IntelliJ KMP iOS plugin incompatibility (workaround note), Apple Silicon simulator Rosetta requirement (already documented in ADR-0002).
+  - Each entry has rationale + remediation phase. ADR-0009 is the source of truth where it conflicts with stale lines in older ADRs.
   - _Requirements: agent-runbook.md_
 
-- [ ] **T091** Add a debug-build assertion in `MoonViewport.ios.kt` that warns at first composition if `MoonRendererProvider.factory` is still the default no-op (forgot to wire from Swift)
+- [x] **T091** Add a debug-build assertion in `MoonViewport.ios.kt` that warns at first composition if `MoonRendererProvider.factory` is still the default no-op (forgot to wire from Swift)
+  - Implemented as a `_factoryWired: Boolean` flag on `MoonRendererProvider` flipped in the `factory` setter (so any non-default assignment trips it), exposed via `isFactoryWired: Boolean` getter.
+  - `MoonViewport.ios.kt` `LaunchedEffect(Unit)` checks `isFactoryWired` at first composition and `println`s a clear warning ("MoonRendererProvider was not wired by the iOS app — Filament renderer will not start. ...") visible in the Xcode console / Console.app. Not fatal — Compose still renders the empty fallback `UIViewController()`.
+  - Catches the silent-failure mode where Swift forgets `MoonRendererProvider.shared.factory = ...` in `iOSApp.init()`.
   - _Requirements: ADR-0002_
 
-- [ ] **T092** Add `iosApp/README.md` with `pod install` + Rosetta + Xcode workspace build instructions
-  - Include the Rosetta toggle steps for Apple Silicon Mac developers
+- [x] **T092** Add `iosApp/README.md` with `pod install` + Rosetta + Xcode workspace build instructions
+  - Covers: prerequisites (Xcode + CocoaPods + `TEAM_ID`), first-time setup, building from Xcode (with explicit Rosetta steps for Apple Silicon), CLI `xcodebuild` snippets for arm64 device + x86_64 Rosetta sim, the IntelliJ/Fleet KMP plugin workaround, project structure tree, Filament version-bump procedure, and a "common pitfalls" section linking to the relevant ADRs.
+  - Cross-references ADR-0002, ADR-0008, ADR-0009.
   - _Requirements: ADR-0002, agent-runbook.md_
 
-- [ ] **T093** Smoke-test on real Pixel 6 + iPhone 12; record FPS, any visible issues, and resolution outcomes in `ai-docs/specs/00-renderer-spike/results.md`
+- [x] **T093** Smoke-test on real Pixel 6 + iPhone 12; record FPS, any visible issues, and resolution outcomes in `ai-docs/specs/00-renderer-spike/results.md`
+  - `results.md` filed at `ai-docs/specs/00-renderer-spike/results.md`. Captures status by phase, what the user has hardware-confirmed (Android emulator + iOS device run, Phase 6 texture swap, top-bar fix), what's pending hardware confirmation (steady-state FPS, FR-004 visual lighting shift), known deferred items for `02-moon-renderer-mvp`, and the resolved-bug history with commit hashes.
+  - FPS placeholders left in `results.md` for the user to fill in after on-device profiler runs.
   - _Requirements: SC-002, SC-003_
 
 **Final Checkpoint**: all four user stories' acceptance criteria pass on real devices. `results.md` filed.

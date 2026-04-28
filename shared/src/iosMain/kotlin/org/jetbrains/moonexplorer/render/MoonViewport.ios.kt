@@ -1,6 +1,7 @@
 package org.jetbrains.moonexplorer.render
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitViewController
@@ -21,6 +22,25 @@ import org.jetbrains.moonexplorer.state.MoonRenderState
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 actual fun MoonViewport(state: MoonRenderState, modifier: Modifier) {
+    // Phase Final (T091) wiring guard. Fires once at first composition. If
+    // the iOS app forgot to set MoonRendererProvider.factory in iOSApp.init(),
+    // the default `{ UIViewController() }` would silently produce an empty
+    // host and the user would see a black screen with no Filament rendering
+    // and no obvious error. The println surfaces in the Xcode console so the
+    // mistake is loud rather than silent. Not fatal — Compose still renders.
+    LaunchedEffect(Unit) {
+        if (!MoonRendererProvider.isFactoryWired) {
+            println(
+                "[MoonExplorer] WARNING: MoonRendererProvider was not wired " +
+                    "by the iOS app — Filament renderer will not start. " +
+                    "Wire MoonRendererProvider.shared.{factory, applyCamera, " +
+                    "applySunDirection, applyMoonRotation, applyAssets, " +
+                    "applyAltAlbedo, applyAlbedoVariant, dispose} in " +
+                    "iOSApp.init(). See ADR-0002 §\"Bridge pattern\" and " +
+                    "iosApp/README.md.",
+            )
+        }
+    }
     val vc = remember { MoonRendererProvider.factory() }
     UIKitViewController(
         factory = { vc },
