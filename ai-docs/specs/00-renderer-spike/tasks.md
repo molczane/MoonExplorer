@@ -61,42 +61,54 @@ All paths relative to `MoonExplorer/` repo root.
 
 ## Phase 2: Foundational (commonMain)
 
-- [ ] **T010** [P] Implement `domain/Vec3.kt` (immutable, no platform types)
+- [x] **T010** [P] Implement `domain/Vec3.kt` (immutable, no platform types)
   - `data class Vec3(val x: Float, val y: Float, val z: Float)` plus `operator fun plus`, `times`, `dot`, `length`, `normalize`
+  - Also: `minus`, `unaryMinus`, `cross`, `lengthSquared`, and `ZERO`/`UP`/`FORWARD`/`RIGHT` companion constants reflecting the ADR-0006 axis convention.
   - _Requirements: ADR-0003_
 
-- [ ] **T011** [P] Implement `domain/MoonMath.kt` (lat/lon ↔ Cartesian, camera position, lookAt-friendly helpers)
+- [x] **T011** [P] Implement `domain/MoonMath.kt` (lat/lon ↔ Cartesian, camera position, lookAt-friendly helpers)
   - Per `ai-docs/research/selenographic-math-camera.md` §1, §2
   - East-positive longitude convention per ADR-0006
+  - Top-level functions: `latLonToCartesian`, `cartesianToLatLon`, `cameraPosition`, `cameraUpVector`. Constants: `DEG_TO_RAD`, `RAD_TO_DEG`, `PITCH_LIMIT_RAD` (~89.4°). Plus `LatLon` data class.
   - _Requirements: ADR-0006, FR-002_
 
-- [ ] **T012** [US1] Implement `domain/UvSphere.kt` — procedural UV sphere generator (default 64×32 segments)
+- [x] **T012** [US1] Implement `domain/UvSphere.kt` — procedural UV sphere generator (default 64×32 segments)
   - Outputs: positions, normals, tangents, uvs (Float-encoded `ByteArray`s little-endian); indices (UShort `ByteArray`)
   - UV mapping per ADR-0006 §"Texture mapping": `u = lon/360 + 0.5`, `v = 0.5 - lat/180`
+  - Tangent = `(cos(lon), 0, -sin(lon))` (∂position/∂lon, normalized). Indices wound CCW for outward-facing (Filament default front-face).
+  - `Mesh` has identity-based equality (the auto-generated `data class` equality on `ByteArray` would compare by reference anyway; tests don't depend on it).
   - _Requirements: FR-001, FR-005_
 
-- [ ] **T013** [US1] Implement `state/MoonRenderState.kt` (data class with defaults)
+- [x] **T013** [US1] Implement `state/MoonRenderState.kt` (data class with defaults)
   - Camera defaults to `(yaw=0, pitch=0, distance=5)` — looking at +Z near-side
-  - Sun defaults to `(0, 0, 1)` — full-Moon-like
+  - Sun defaults to `(0, 0, 1)` — full-Moon-like (uses `Vec3.FORWARD`)
+  - Plus `moonRotationRad`, `highlightedSiteId` for future-proofing
   - _Requirements: ADR-0003_
 
-- [ ] **T014** [US1] Implement `state/MoonViewModel.kt` with `onDrag`, `onPinch`, `setSunDirection`
+- [x] **T014** [US1] Implement `state/MoonViewModel.kt` with `onDrag`, `onPinch`, `setSunDirection`
   - `onDrag(dxPx, dyPx, viewportH, fovY)` per `selenographic-math-camera.md` §4
   - `onPinch(scale)` per §3 (exponential), clamped `[1.5, 20]`
   - `setSunDirection(Vec3)` simply replaces sun
+  - Plus `highlightLocation(id)` for future-proofing
+  - Plain class (not `androidx.lifecycle.ViewModel`) — `lifecycle-viewmodel-compose` integration deferred to `01-app-shell` DI work
+  - Backed by `MutableStateFlow<MoonRenderState>` with `update {}` mutations
   - _Requirements: FR-002, FR-003, FR-004_
 
-- [ ] **T015** [US1] Declare `@Composable expect fun MoonViewport(state, modifier)` in `render/MoonViewport.kt`
+- [x] **T015** [US1] Declare `@Composable expect fun MoonViewport(state, modifier)` in `render/MoonViewport.kt`
+  - Plus minimal stub `actual`s in `androidMain/render/MoonViewport.android.kt` and `iosMain/render/MoonViewport.ios.kt` (a dark-gray `Box`) so commonMain compiles end-to-end. Real Filament-backed implementations land in T032/T033 (Android) and T034/T035 (iOS).
   - _Requirements: ADR-0003_
 
-- [ ] **T016** [US1] Replace `App()` body with `MoonExplorerScreen` Composable
-  - Hosts `MoonViewport(state, Modifier.fillMaxSize().pointerInput { ... })`
-  - Holds the `MoonViewModel` via `remember { MoonViewModel() }` for the spike (DI in Phase 1 proper)
-  - Removes the wizard "Click me!" `Greeting` UI
+- [x] **T016** [US1] Replace `App()` body with `MoonExplorerScreen` Composable
+  - Hosts `MoonViewport(state, Modifier.fillMaxSize())` over a `Color.Black` background, with `SunControl` aligned bottom-center
+  - Holds the `MoonViewModel` via `remember { MoonViewModel() }` for the spike (DI in `01-app-shell`)
+  - `pointerInput` gesture wiring deferred to T041 (Phase 4)
+  - `Greeting.kt` and `Platform.kt` left in place as harmless wizard leftovers; cleanup in T090 if desired
   - _Requirements: FR-001_
 
-- [ ] **T017** [US3] Implement `ui/SunControl.kt` — single-axis slider mapping `[-1, 1]` → sun direction X
-  - Wires through `viewModel.setSunDirection(Vec3(x, 0f, sqrt(max(0f, 1f - x*x))))` (hemisphere lift; full joystick is `04-sun-control`)
+- [x] **T017** [US3] Implement `ui/SunControl.kt` — single-axis slider mapping `[-1, 1]` → sun direction X
+  - `joystickToHemisphereDir(x)` does the hemisphere lift (`z = sqrt(max(0, 1 - x²))`, y locked to 0); full 2D joystick + presets in `04-sun-control`
+  - `MoonExplorerScreen` wires the slider's `onValueChange` through `joystickToHemisphereDir` to `viewModel.setSunDirection`
+  - Display value rounded via `roundToInt()` (Kotlin/Native compatible — `String.format` is JVM-only)
   - _Requirements: FR-004_
 
 ### Tests for Phase 2
