@@ -2,21 +2,32 @@
 #
 # Filament-on-iOS via Swift-side hosting. See:
 #   ai-docs/decisions/0002-filament-ios-distribution.md
+#   ai-docs/decisions/0008-filament-pod-via-raw-url.md
+#
+# NOTE: Filament's CocoaPods trunk publishing stops at 1.69.3 — versions 1.70+
+# exist as podspec files in the upstream repo but were never pushed to trunk.
+# Until that's fixed upstream we point CocoaPods directly at the podspec file
+# at the immutable v1.71.1 git tag (raw.githubusercontent.com), keeping the
+# iOS version aligned with the Android Maven dep (filament-android:1.71.1).
+# A future Filament version bump means updating FILAMENT_PODSPEC + libs.versions.toml
+# together. See ADR-0008 for full reasoning.
 #
 # Subspec selection locked for Phase 0/1: core engine + KTX2 reader only.
 # We deliberately skip Filament/filamat (we pre-compile via matc),
 # Filament/gltfio_core (procedural UV sphere), and Filament/viewer.
 #
 # Apple Silicon Mac developers: the Filament pod excludes the arm64 simulator
-# slice. Run the simulator under Rosetta — see iosApp/README.md.
+# slice. Run the simulator under Rosetta — see iosApp/README.md (T092).
 
 platform :ios, '13.0'
 inhibit_all_warnings!
 
+FILAMENT_PODSPEC = 'https://raw.githubusercontent.com/google/filament/v1.71.1/ios/CocoaPods/Filament.podspec'
+
 target 'iosApp' do
   use_frameworks!
-  pod 'Filament/filament',  '~> 1.71.1'
-  pod 'Filament/ktxreader', '~> 1.71.1'
+  pod 'Filament/filament',  :podspec => FILAMENT_PODSPEC
+  pod 'Filament/ktxreader', :podspec => FILAMENT_PODSPEC
 end
 
 post_install do |installer|

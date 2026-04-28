@@ -44,11 +44,11 @@ All paths relative to `MoonExplorer/` repo root.
   - No further action; this slot remains in the task list as a checkpoint history.
 
 - [ ] **T006** [P] Initialize `iosApp/Podfile` with the locked Filament subspecs
-  - [x] `pod 'Filament/filament', '~> 1.71.1'` — authored
-  - [x] `pod 'Filament/ktxreader', '~> 1.71.1'` — authored
+  - [x] `pod 'Filament/filament'` and `pod 'Filament/ktxreader'` — authored
   - [x] `iosApp/Pods/` already gitignored via `**/Pods/`
-  - [ ] **Awaits user action**: `brew install cocoapods` (CocoaPods is not installed on this dev machine), then `cd iosApp && pod install`. The Podfile also runs a `post_install` hook bumping the pods' `IPHONEOS_DEPLOYMENT_TARGET` to 13.0 to align with the app.
-  - _Requirements: ADR-0002_
+  - [x] **Discovery 2026-04-28**: `pod install` failed because Filament's CocoaPods trunk publishing stops at 1.69.3 (1.70.x+ is on GitHub but never `pod trunk push`ed). Switched to `:podspec => '<raw github URL at v1.71.1 tag>'` form keeping the Android+iOS version pinned at 1.71.1. See **ADR-0008**.
+  - [ ] **Awaits user action**: `cd iosApp && pod install` (after the Podfile fix above). No `--repo-update` needed — the Podfile no longer pulls from trunk for Filament.
+  - _Requirements: ADR-0002, ADR-0008_
 
 - [ ] **T007** [P] Pre-Phase-0 smoke test of `Shared.framework` inside the new CocoaPods workspace
   - **Blocked on T006 pod install + Xcode**: requires CocoaPods + a Mac with Xcode. Resume once `iosApp.xcworkspace` exists.
