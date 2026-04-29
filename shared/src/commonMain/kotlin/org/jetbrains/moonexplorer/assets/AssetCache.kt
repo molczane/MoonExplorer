@@ -2,6 +2,7 @@ package org.jetbrains.moonexplorer.assets
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.onDownload
 import io.ktor.client.request.get
 import io.ktor.http.isSuccess
 
@@ -27,12 +28,28 @@ class AssetCache(
         val cached = storage.read(entry.fileName)
         if (cached != null && sha256(cached) == entry.sha256) {
             recordInventory(entry.fileName)
+            log("cache hit: ${entry.fileName} (${cached.size} bytes)")
             return cached
         }
         // Either missing or hash mismatch (corrupt / tampered / partial write).
-        if (cached != null) storage.delete(entry.fileName)
+        if (cached != null) {
+            log("sha256 mismatch on cached ${entry.fileName}; refetching")
+            storage.delete(entry.fileName)
+        }
 
-        val response = http.get(entry.url)
+        log("fetching ${entry.url}")
+        var lastLoggedPct = 0
+        val response = http.get(entry.url) {
+            onDownload { received, contentLength ->
+                if (contentLength != null && contentLength > 0L) {
+                    val pct = (received * 100L / contentLength).toInt()
+                    if (pct >= lastLoggedPct + 25) {
+                        lastLoggedPct = pct
+                        log("${entry.fileName}: ~$pct% ($received / $contentLength)")
+                    }
+                }
+            }
+        }
         check(response.status.isSuccess()) {
             "GET ${entry.url} returned ${response.status}"
         }
@@ -44,6 +61,7 @@ class AssetCache(
 
         storage.writeAtomically(entry.fileName, fetched)
         recordInventory(entry.fileName)
+        log("cached ${entry.fileName} (${fetched.size} bytes)")
         return fetched
     }
 
@@ -74,6 +92,13 @@ class AssetCache(
     private suspend fun readInventory(): Set<String> {
         val text = storage.read(INVENTORY_FILE)?.decodeToString() ?: return emptySet()
         return text.lineSequence().filter { it.isNotBlank() }.toSet()
+    }
+
+    private fun log(message: String) {
+        // Plain stdout — surfaces in `adb logcat` on Android and the Xcode console on iOS.
+        // Cheap enough that gating on a debug flag isn't worth it for the few lines we emit
+        // per asset release.
+        println("[AssetCache] $message")
     }
 
     private companion object {

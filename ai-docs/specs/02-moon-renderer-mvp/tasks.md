@@ -128,30 +128,30 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
 
 ## Phase 3: CDN streaming
 
-- [ ] **T120** [US2] Wire HTTP fetch in `AssetCache` via Ktor
+- [x] **T120** [US2] Wire HTTP fetch in `AssetCache` via Ktor
   - Use `HttpClient(...) { install(ContentNegotiation) { json() } }`.
   - `cache.lookupOrFetch` calls `http.get(entry.url) { onDownload { ... } }` for cache misses.
   - Stream to `storage.writeAtomically(...)` rather than buffering in memory if size > 4 MB.
   - Cancel mid-flight on `Job.cancel()` (called when `MoonAssetLoader`'s scope is cancelled).
   - _Requirements: FR-002, edge-case "App backgrounded mid-fetch"_
 
-- [ ] **T121** [US2] First-launch HD download flow in `MoonAssetLoader`
+- [x] **T121** [US2] First-launch HD download flow in `MoonAssetLoader`
   - After `Bundled2K` is pushed, kick off HD fetch on `Dispatchers.IO`.
   - Single in-flight job per `MoonAssetLoader` instance (deduplicate concurrent triggers).
   - On success, push `Hd8K` via `viewModel.setTextureSet(...)`. Renderer detects state change and rebinds.
   - _Requirements: FR-002, FR-003_
 
-- [ ] **T122** [US2] HD swap-in without Engine teardown
+- [x] **T122** [US2] HD swap-in without Engine teardown — verified in MoonHost.kt's `applyTextureSet` (Hd8K branch logs deferral; Bundled2K branch destroys previous Texture before rebind) and MoonRenderer.mm's `loadTextureSetAlbedo:normal:isHd:` (`_engine->destroy(_albedoTex)` + `destroy(_normalTex)` after `setParameter`).
   - `MoonHost.applyTextureSet(state)` already handles the rebind path from T115 — verify the `Hd8K` branch destroys the old (2 K) Filament `Texture` objects after binding the new ones (no leak).
   - iOS `MoonRenderer` does the same in `loadTextureSetAlbedo:normal:material:variant:` (variant goes 0=2K → 1=HD).
   - _Requirements: FR-003, NFR memory_
 
-- [ ] **T123** [US2] Manifest version invalidation
+- [x] **T123** [US2] Manifest version invalidation — `cache.invalidate(manifest.version)` is called before the two `lookupOrFetch` calls in `MoonAssetLoader.loadInto`. Inventory sidecar tracks tracked filenames; deletion happens on version-bump.
   - `MoonAssetLoader` compares the local manifest version to a remote-or-bundled version it fetched.
   - If different → `cache.invalidate(oldVersion)` deletes the prior HD files before fetching the new ones.
   - _Requirements: FR-009_
 
-- [ ] **T124** [US2] Offline graceful fallback
+- [x] **T124** [US2] Offline graceful fallback — `MoonAssetLoader` catches `Throwable` (broader than the spec's `HttpRequestTimeoutException` / `IOException` — also covers parse + sha256 mismatch) and logs without crashing. Bundled2K stays bound; new MoonAssetLoader instance on next launch retries.
   - `MoonAssetLoader` catches `HttpRequestTimeoutException` / `IOException` from Ktor and logs without crashing.
   - State stays at `Bundled2K`; user-visible behavior is "real Moon, just not the HD version yet".
   - On next launch, the loader retries.

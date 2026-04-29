@@ -2,6 +2,9 @@ package org.jetbrains.moonexplorer.assets
 
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import moonexplorer.shared.generated.resources.Res
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.moonexplorer.state.MoonViewModel
@@ -26,29 +29,58 @@ class MoonAssetLoader(
 ) {
     private val cache: AssetCache = AssetCache(storage, http)
 
+    /**
+     * T121 — single-flight guard. `tryLock`-based dedup means concurrent triggers (e.g. a
+     * config change that recomposes MoonExplorerScreen and the same loader instance still
+     * has loadInto in flight) no-op rather than queue up redundant fetches. Each new
+     * MoonAssetLoader instance has its own Mutex, so a fresh launch retries from scratch.
+     */
+    private val loadMutex: Mutex = Mutex()
+
     @OptIn(ExperimentalResourceApi::class)
     suspend fun loadInto() {
-        // 1. Bundled 2 K PNGs — both platforms.
-        val albedo2K = Res.readBytes(BUNDLED_ALBEDO_PATH)
-        val normal2K = Res.readBytes(BUNDLED_NORMAL_PATH)
-        viewModel.setTextureSet(TextureSet.Bundled2K(albedo2K, normal2K))
-
-        if (!isHdStreamingSupported) return
-
-        // 2. HD KTX2 — iOS only for now (ADR-0011).
+        if (!loadMutex.tryLock()) {
+            println("[MoonAssetLoader] loadInto() already in flight; skipping concurrent trigger")
+            return
+        }
         try {
-            val manifestBytes = Res.readBytes(MANIFEST_PATH)
-            val manifest = AssetManifest.parse(manifestBytes.decodeToString())
-            cache.invalidate(manifest.version)
-            val albedoHd = cache.lookupOrFetch(manifest.albedo)
-            val normalHd = cache.lookupOrFetch(manifest.normal)
-            viewModel.setTextureSet(TextureSet.Hd8K(albedoHd, normalHd))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            // Network / parse / cache failure — bundled 2 K stays bound. Loader retries on next
-            // app launch (FR-006).
-            println("[MoonAssetLoader] HD fetch failed: ${e::class.simpleName}: ${e.message}")
+            // 1. Bundled 2 K PNGs — both platforms. Res.readBytes is suspending and dispatches
+            // its own I/O internally; no withContext needed here.
+            val albedo2K = Res.readBytes(BUNDLED_ALBEDO_PATH)
+            val normal2K = Res.readBytes(BUNDLED_NORMAL_PATH)
+            viewModel.setTextureSet(TextureSet.Bundled2K(albedo2K, normal2K))
+
+            if (!isHdStreamingSupported) return
+
+            // 2. HD KTX2 — iOS only for now (ADR-0011). Route through Dispatchers.Default so
+            // network + sha256 + disk I/O don't tie up the Compose dispatcher. (Dispatchers.IO
+            // would be marginally better on JVM/Android but isn't in commonMain — Default's
+            // pool handles I/O-bound work correctly across both platforms.)
+            withContext(Dispatchers.Default) {
+                try {
+                    val manifestBytes = Res.readBytes(MANIFEST_PATH)
+                    val manifest = AssetManifest.parse(manifestBytes.decodeToString())
+                    cache.invalidate(manifest.version)
+                    val albedoHd = cache.lookupOrFetch(manifest.albedo)
+                    val normalHd = cache.lookupOrFetch(manifest.normal)
+                    viewModel.setTextureSet(TextureSet.Hd8K(albedoHd, normalHd))
+                    println(
+                        "[MoonAssetLoader] HD bound: version=${manifest.version}, " +
+                            "total=${albedoHd.size + normalHd.size} bytes",
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // T124 — network / parse / cache failure. Bundled 2 K stays bound;
+                    // loader retries on next launch (FR-006).
+                    println(
+                        "[MoonAssetLoader] HD fetch failed: " +
+                            "${e::class.simpleName}: ${e.message} — staying at Bundled2K",
+                    )
+                }
+            }
+        } finally {
+            loadMutex.unlock()
         }
     }
 
