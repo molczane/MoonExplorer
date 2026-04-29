@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -20,7 +23,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.jetbrains.moonexplorer.assets.MoonAssetLoader
 import org.jetbrains.moonexplorer.assets.StorageDir
 import org.jetbrains.moonexplorer.assets.createMoonHttpClient
@@ -59,6 +64,7 @@ fun MoonExplorerScreen(
 
     val state = viewModel.state.collectAsState().value
     var viewportHeightPx by remember { mutableStateOf(0) }
+    var aboutSheetVisible by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         MoonViewport(
@@ -98,5 +104,26 @@ fun MoonExplorerScreen(
                 .navigationBarsPadding()
                 .padding(16.dp),
         )
+        // About / Credits affordance (T131). statusBarsPadding() keeps the hit-target clear
+        // of the iOS notch / Dynamic Island and the Android status bar — the spike's Phase 6
+        // toggle taught us this the hard way (commit d0bd48a).
+        IconButton(
+            onClick = { aboutSheetVisible = true },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(8.dp),
+        ) {
+            Text(
+                text = "ⓘ",
+                color = Color.White,
+                fontSize = 28.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+
+    if (aboutSheetVisible) {
+        AboutSheet(onDismissRequest = { aboutSheetVisible = false })
     }
 }

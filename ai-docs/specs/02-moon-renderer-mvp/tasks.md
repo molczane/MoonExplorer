@@ -163,12 +163,12 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
 
 ## Phase 4: Attribution UI
 
-- [ ] **T130** [US4] Implement `ui/AboutSheet.kt`
+- [x] **T130** [US4] Implement `ui/AboutSheet.kt`
   - `ModalBottomSheet` (Material3) with the verbatim attribution string, build version (`BuildKonfig` or hand-rolled `expect val`), Filament version, and short pointers to the ADR docs.
   - Dismissable by drag or scrim tap.
   - _Requirements: FR-005_
 
-- [ ] **T131** [US4] Wire ⓘ button in `MoonExplorerScreen`
+- [x] **T131** [US4] Wire ⓘ button in `MoonExplorerScreen`
   - `IconButton(Icons.Outlined.Info, ...)` aligned `TopStart` with `statusBarsPadding()` (mirror the Phase 6 toggle's safe-area treatment).
   - Tap: open `AboutSheet`.
   - The Phase 6 "Texture A / B" toggle is removed (its variant state went away with `albedoVariant`).
