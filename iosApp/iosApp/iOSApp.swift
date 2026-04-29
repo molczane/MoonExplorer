@@ -43,6 +43,16 @@ struct iOSApp: App {
                 isHd: isHd.boolValue
             )
         }
+        provider.applyStarsCubemap = { px, nx, py, ny, pz, nz in
+            renderer.loadStarsCubemap(
+                px: px.toData(), nx: nx.toData(),
+                py: py.toData(), ny: ny.toData(),
+                pz: pz.toData(), nz: nz.toData()
+            )
+        }
+        provider.applyShowStars = { show in
+            renderer.setShowStars(show.boolValue)
+        }
         provider.dispose = { renderer.tearDown() }
 
         // Pre-fetch the bundled .filamat material via Compose Resources. Texture loading is
@@ -52,6 +62,15 @@ struct iOSApp: App {
                 try await MoonAssetsKt.loadAndPushMaterial()
             } catch {
                 print("loadAndPushMaterial failed: \(error)")
+            }
+        }
+        // T704 — pre-fetch the 6 cubemap face PNGs at startup. Same pattern as the material:
+        // a one-shot Task that pushes bytes through MoonRendererProvider.applyStarsCubemap.
+        Task {
+            do {
+                try await MoonAssetsKt.loadAndPushStarsCubemap()
+            } catch {
+                print("loadAndPushStarsCubemap failed: \(error)")
             }
         }
     }

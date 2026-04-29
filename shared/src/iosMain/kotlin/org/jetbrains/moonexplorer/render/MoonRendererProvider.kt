@@ -32,6 +32,22 @@ object MoonRendererProvider {
      * KTX2 + Basis Universal via Ktx2Reader for the HD tier (ADR-0011 keeps HD iOS-only).
      */
     var applyTextureSet: (albedo: ByteArray, normal: ByteArray, isHd: Boolean) -> Unit = { _, _, _ -> }
+    /**
+     * One-shot at startup. 6 PNG byte arrays in Filament cubemap face order
+     * (+X, -X, +Y, -Y, +Z, -Z) — the renderer decodes, builds a SAMPLER_CUBEMAP
+     * Texture + Skybox, and attaches it to the scene if `showStars` is currently
+     * true. T704 / 07-celestial-background.
+     */
+    var applyStarsCubemap: (
+        px: ByteArray,
+        nx: ByteArray,
+        py: ByteArray,
+        ny: ByteArray,
+        pz: ByteArray,
+        nz: ByteArray,
+    ) -> Unit = { _, _, _, _, _, _ -> }
+    /** Per-recomposition push of `state.showStars`. T704 / 07-celestial-background. */
+    var applyShowStars: (showStars: Boolean) -> Unit = { _ -> }
     var dispose: () -> Unit = {}
 
     /**

@@ -13,6 +13,7 @@
 #include <filament/RenderableManager.h>
 #include <filament/Renderer.h>
 #include <filament/Scene.h>
+#include <filament/Skybox.h>
 #include <filament/SwapChain.h>
 #include <filament/Texture.h>
 #include <filament/TextureSampler.h>
@@ -276,6 +277,12 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     BOOL _materialBuilt;
     BOOL _meshBuilt;
 
+    // T704 / 07-celestial-background — stars Skybox + its backing cubemap.
+    Texture* _starsCubemap;
+    Skybox* _skybox;
+    BOOL _showStars;
+    BOOL _starsAttached;  // tracks whether the Skybox is currently attached to the scene
+
     // Cached state. **All access is on the main thread** — both the setters
     // (called from Compose's `update` lambda via the Kotlin `MoonRendererProvider`
     // closures) and the reader (`renderloop`, driven by CADisplayLink on the
@@ -300,6 +307,10 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     _materialBuilt = NO;
     _meshBuilt = NO;
     _indexCount = 0;
+    _starsCubemap = nullptr;
+    _skybox = nullptr;
+    _showStars = YES;        // matches MoonRenderState default
+    _starsAttached = NO;
     _lastAlbedoPtr = nullptr;
     _lastAlbedoLen = 0;
     _lastNormalPtr = nullptr;
@@ -402,6 +413,9 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     if (_vertexBuffer)   { _engine->destroy(_vertexBuffer);   _vertexBuffer   = nullptr; }
     if (_albedoTex)      { _engine->destroy(_albedoTex);      _albedoTex      = nullptr; }
     if (_normalTex)      { _engine->destroy(_normalTex);      _normalTex      = nullptr; }
+    // Stars Skybox + cubemap (T704). Detach first so the Scene doesn't dangle.
+    if (_skybox)         { _scene->setSkybox(nullptr); _engine->destroy(_skybox); _skybox = nullptr; }
+    if (_starsCubemap)   { _engine->destroy(_starsCubemap);   _starsCubemap   = nullptr; }
     if (_materialInstance) { _engine->destroy(_materialInstance); _materialInstance = nullptr; }
     if (_material)       { _engine->destroy(_material);       _material       = nullptr; }
     if (_view)           { _engine->destroy(_view);           _view           = nullptr; }
@@ -577,6 +591,83 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     _lastNormalPtr = normal.bytes;
     _lastNormalLen = normal.length;
     _lastWasHd = isHd;
+}
+
+- (void)loadStarsCubemapPx:(NSData *)px
+                        nx:(NSData *)nx
+                        py:(NSData *)py
+                        ny:(NSData *)ny
+                        pz:(NSData *)pz
+                        nz:(NSData *)nz {
+    // T704 / 07-celestial-background. Build a SAMPLER_CUBEMAP Texture from the 6 PNG faces
+    // and a Skybox referencing it. Attach to the scene unless the host has already toggled
+    // the flag off via setShowStars: before this one-shot fired.
+    if (_engine == nullptr || _scene == nullptr) return;
+    if (_skybox != nullptr) return;  // idempotent
+
+    NSData* facesNs[6] = { px, nx, py, ny, pz, nz };
+    uint32_t faceSize = 0;
+    NSData* decoded[6] = { nil, nil, nil, nil, nil, nil };
+    for (int i = 0; i < 6; ++i) {
+        uint32_t w = 0, h = 0;
+        decoded[i] = decodePngToRgba8(facesNs[i], &w, &h);
+        if (decoded[i] == nil) return;
+        if (i == 0) {
+            faceSize = w;
+            if (w != h) return;
+        } else if (w != faceSize || h != faceSize) {
+            return;  // all faces must be square + equal-sized
+        }
+    }
+
+    const size_t faceBytes = (size_t)faceSize * (size_t)faceSize * 4;
+    auto* combined = new std::vector<uint8_t>(6 * faceBytes);
+    for (int i = 0; i < 6; ++i) {
+        std::memcpy(combined->data() + i * faceBytes, decoded[i].bytes, faceBytes);
+    }
+
+    Texture::FaceOffsets offsets;
+    for (int i = 0; i < 6; ++i) offsets.offsets[i] = (uint32_t)(i * faceBytes);
+
+    _starsCubemap = Texture::Builder()
+        .width(faceSize)
+        .height(faceSize)
+        .levels(1)
+        .sampler(Texture::Sampler::SAMPLER_CUBEMAP)
+        .format(Texture::InternalFormat::SRGB8_A8)
+        .build(*_engine);
+    if (_starsCubemap == nullptr) {
+        delete combined;
+        return;
+    }
+
+    Texture::PixelBufferDescriptor pbd(
+        combined->data(), 6 * faceBytes,
+        Texture::Format::RGBA, Texture::Type::UBYTE,
+        &releaseStdVectorBytes, combined);
+    _starsCubemap->setImage(*_engine, 0, std::move(pbd), offsets);
+
+    _skybox = Skybox::Builder()
+        .environment(_starsCubemap)
+        .build(*_engine);
+    if (_skybox == nullptr) return;
+
+    if (_showStars) {
+        _scene->setSkybox(_skybox);
+        _starsAttached = YES;
+    }
+}
+
+- (void)setShowStars:(BOOL)show {
+    _showStars = show;
+    if (_engine == nullptr || _scene == nullptr || _skybox == nullptr) return;
+    if (show && !_starsAttached) {
+        _scene->setSkybox(_skybox);
+        _starsAttached = YES;
+    } else if (!show && _starsAttached) {
+        _scene->setSkybox(nullptr);
+        _starsAttached = NO;
+    }
 }
 
 - (void)renderloop {

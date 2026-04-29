@@ -3,6 +3,7 @@ package org.jetbrains.moonexplorer.state
 import kotlin.math.PI
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.jetbrains.moonexplorer.domain.PITCH_LIMIT_RAD
 
@@ -108,6 +109,23 @@ class MoonViewModelTest {
         vm.onDrag(100f, 100f, viewportHpx = VIEWPORT_H, fovYRad = 0f)
         assertEquals(0.5f, vm.state.value.cameraYawRad)
         assertEquals(0.3f, vm.state.value.cameraPitchRad)
+    }
+
+    // ---- T705 / 07-celestial-background: setShowStars ----
+
+    @Test
+    fun setShowStars_defaultIsTrue() {
+        val vm = MoonViewModel()
+        assertTrue(vm.state.value.showStars, "default showStars should be true")
+    }
+
+    @Test
+    fun setShowStars_togglesState() {
+        val vm = MoonViewModel()
+        vm.setShowStars(false)
+        assertFalse(vm.state.value.showStars, "after setShowStars(false), state.showStars should be false")
+        vm.setShowStars(true)
+        assertTrue(vm.state.value.showStars, "after setShowStars(true), state.showStars should be true")
     }
 
     companion object {

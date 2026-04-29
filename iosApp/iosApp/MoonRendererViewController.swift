@@ -25,6 +25,13 @@ final class MoonRendererViewController: UIViewController {
     private var pendingTextureAlbedo: Data?
     private var pendingTextureNormal: Data?
     private var pendingTextureIsHd: Bool = false
+    // T704 — stars cubemap one-shot pending bytes.
+    private var pendingStarsPx: Data?
+    private var pendingStarsNx: Data?
+    private var pendingStarsPy: Data?
+    private var pendingStarsNy: Data?
+    private var pendingStarsPz: Data?
+    private var pendingStarsNz: Data?
 
     override func loadView() {
         let v = MoonRendererView(frame: .zero)
@@ -53,6 +60,14 @@ final class MoonRendererViewController: UIViewController {
             r.loadTextureSetAlbedo(a, normal: n, isHd: pendingTextureIsHd)
             pendingTextureAlbedo = nil
             pendingTextureNormal = nil
+        }
+        if let px = pendingStarsPx, let nx = pendingStarsNx,
+           let py = pendingStarsPy, let ny = pendingStarsNy,
+           let pz = pendingStarsPz, let nz = pendingStarsNz {
+            r.loadStarsCubemapPx(px, nx: nx, py: py, ny: ny, pz: pz, nz: nz)
+            pendingStarsPx = nil; pendingStarsNx = nil
+            pendingStarsPy = nil; pendingStarsNy = nil
+            pendingStarsPz = nil; pendingStarsNz = nil
         }
     }
 
@@ -96,6 +111,25 @@ final class MoonRendererViewController: UIViewController {
             pendingTextureNormal = normal
             pendingTextureIsHd = isHd
         }
+    }
+
+    // T704 / 07-celestial-background — stars cubemap one-shot + per-recomp toggle.
+
+    @objc func loadStarsCubemap(px: Data, nx: Data, py: Data, ny: Data, pz: Data, nz: Data) {
+        if let r = renderer {
+            r.loadStarsCubemapPx(px, nx: nx, py: py, ny: ny, pz: pz, nz: nz)
+        } else {
+            pendingStarsPx = px
+            pendingStarsNx = nx
+            pendingStarsPy = py
+            pendingStarsNy = ny
+            pendingStarsPz = pz
+            pendingStarsNz = nz
+        }
+    }
+
+    @objc func setShowStars(_ show: Bool) {
+        renderer?.setShowStars(show)
     }
 
     @objc func tearDown() {

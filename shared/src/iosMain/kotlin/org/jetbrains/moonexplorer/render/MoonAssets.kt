@@ -19,3 +19,22 @@ suspend fun loadAndPushMaterial() {
     val material = Res.readBytes("files/materials/moon.filamat")
     MoonRendererProvider.applyMaterial(material)
 }
+
+/**
+ * iOS-only one-shot at app startup: read the 6 bundled cubemap face PNGs from compose
+ * resources and push them through [MoonRendererProvider.applyStarsCubemap]. Mirrors
+ * [loadAndPushMaterial]'s pattern: Swift `iOSApp.init()` calls this from a `Task` so
+ * the Skybox is ready by the time first frame fires. T704 / 07-celestial-background.
+ *
+ * Face order matches Filament's cubemap enum: +X, -X, +Y, -Y, +Z, -Z.
+ */
+@OptIn(ExperimentalResourceApi::class)
+suspend fun loadAndPushStarsCubemap() {
+    val px = Res.readBytes("files/stars/px.png")
+    val nx = Res.readBytes("files/stars/nx.png")
+    val py = Res.readBytes("files/stars/py.png")
+    val ny = Res.readBytes("files/stars/ny.png")
+    val pz = Res.readBytes("files/stars/pz.png")
+    val nz = Res.readBytes("files/stars/nz.png")
+    MoonRendererProvider.applyStarsCubemap(px, nx, py, ny, pz, nz)
+}

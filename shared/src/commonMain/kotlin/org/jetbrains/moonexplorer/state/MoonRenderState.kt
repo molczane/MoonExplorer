@@ -23,4 +23,11 @@ data class MoonRenderState(
      * → Bundled2K → Hd8K is the typical lifecycle (FR-001, FR-003).
      */
     val textureSet: TextureSet = TextureSet.Placeholder,
+    /**
+     * Whether the Filament `Skybox` cubemap is attached to the scene. T705 / 07-celestial-
+     * background. Read by both renderer hosts per frame; flipping `false → true`
+     * re-attaches the cubemap, `true → false` detaches it (`scene.setSkybox(null)` /
+     * `scene->setSkybox(nullptr)`).
+     */
+    val showStars: Boolean = true,
 )

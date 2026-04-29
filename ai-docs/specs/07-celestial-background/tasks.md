@@ -13,31 +13,33 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T700+
 
 ## Phase 1: Stars (skybox)
 
-- [ ] **T701** [P] [US1] Acquire + verify Milky Way Panorama asset
+- [ ] **T701** [P] [US1] Acquire + verify Milky Way Panorama asset — **deferred to a follow-up commit on this branch**. Real ESO press release 0932 (Brunier Milky Way Panorama, CC BY 4.0) needs human-side license verification before the bytes land; the procedural placeholder from T702-placeholder unblocks T703–T705 in the meantime. The eventual swap is a 6-PNG byte replacement at the same path — no code change required.
   - Source: ESO press release 0932 — Milky Way Panorama by Serge Brunier. Confirm CC BY 4.0 license terms against the original press release page; capture the canonical attribution string ("ESO/S. Brunier") for ADR-0004's amendment + AboutSheet.
   - Fallback: NASA Tycho Star Catalog skymap (public domain) if ESO licensing isn't unambiguous.
   - Output: a single equirectangular PNG (4096×2048 or similar), staged outside the repo for the bake step in T702.
   - _Requirements: NFR (asset attribution), FR-011_
 
-- [ ] **T702** [P] [US1] Bake equirectangular → 6-face cubemap
+- [ ] **T702** [P] [US1] Bake equirectangular → 6-face cubemap — **deferred** alongside T701. Real ESO bake needs the source image acquired in T701; the cubemap-bake pipeline shape (cmft / AMD Cubemapgen / Blender / Python+PIL) stays as planned.
   - Convert with cmft / AMD Cubemapgen / Blender / Python+PIL — pick whichever produces seamless edges; document the tool + version used in `results.md`.
   - Output: 6 PNG files at 1024×1024 each, sRGB 8-bit. Naming: `{px,nx,py,ny,pz,nz}.png` matching Filament's `[+X, -X, +Y, -Y, +Z, -Z]` face enum order.
   - Bundle path: `shared/src/commonMain/composeResources/files/stars/`
   - Total bundled size ≤ 6 MB.
   - _Requirements: FR-001, NFR (bundle size)_
 
-- [ ] **T703** [US1] [Android] Skybox setup in `MoonHost.kt`
+- [x] **T702-placeholder** [US1] Procedural placeholder cubemap to unblock T703–T705 — `tools/bake-stars-cubemap/generate_placeholder.py` (Python 3 + PIL) creates 6 face PNGs at 512×512 with ~700 random stars per face on black backgrounds (power-law brightness distribution; ~5% of bright stars get a 2-px halo). Deterministic via fixed RNG seeds 1–6 per face. Output bundled at `shared/src/commonMain/composeResources/files/stars/{px,nx,py,ny,pz,nz}.png` — ~7 KB per face, ~46 KB total. Visible cubemap seams are intentional ("clearly procedural — the user can tell at a glance the real bake hasn't landed yet"). Real ESO swap (T701 + T702) is a byte replacement at the same paths — no further code change.
+
+- [x] **T703** [US1] [Android] Skybox setup in `MoonHost.kt`
   - On init: load 6 PNGs via `BitmapFactory.decodeStream` (matches the existing 2K Moon-texture path); build a Filament cubemap `Texture` (`TextureSampler.SamplerType.SAMPLER_CUBEMAP`); upload each face via `setImage(level=0, faceOffset)`; build a `Skybox.Builder().environment(texture).build(engine)`; on per-frame `if (state.showStars && lastSkyboxState != true)`: `scene.setSkybox(skybox)`; flip-side: `scene.setSkybox(null)`.
   - Cache the `Skybox` instance — recreating it every frame is wasteful.
   - Track the previous `showStars` value to avoid redundant `setSkybox` calls.
   - _Requirements: FR-001, FR-002_
 
-- [ ] **T704** [US1] [iOS] Skybox setup in `MoonRenderer.mm`
+- [x] **T704** [US1] [iOS] Skybox setup spans the full bridge — `MoonRenderer.h` declares `loadStarsCubemapPx:nx:py:ny:pz:nz:` (one-shot) + `setShowStars:` (per-recomp). `MoonRenderer.mm` implements: `decodePngToRgba8` per face → packed `std::vector<uint8_t>` of 6 face's RGBA8 → `Texture::FaceOffsets` + `setImage(level, pbd, offsets)` → `Skybox::Builder().environment(cubemap).build()` → conditional `scene->setSkybox(...)`. `MoonRendererProvider` gains `applyStarsCubemap` + `applyShowStars` closures. `MoonAssets.kt` gains `loadAndPushStarsCubemap()` (reads 6 PNGs from compose resources, pushes via the closure). `MoonViewport.ios.kt` calls `applyShowStars(state.showStars)` in the `update` lambda. `MoonRendererViewController.swift` adds forwarders + pre-viewDidLoad pending-bytes buffer. `iOSApp.swift` wires the two new closures + adds a startup `Task` for `loadAndPushStarsCubemap()`. Symbol coverage from `Filament/filament` subspec (ADR-0008) confirmed via `compileKotlinIosSimulatorArm64` linking cleanly.
   - Same dance in Obj-C++: 6 `CGImageSource`-decoded PNGs → cubemap `Texture` → `Skybox::Builder().environment(...).build(engine)` → `scene->setSkybox(...)`.
   - Verify `Skybox` symbol resolves from `Filament/filament` subspec (ADR-0008) — `nm libfilament.a | grep -i Skybox` if there's any doubt.
   - _Requirements: FR-001, FR-002_
 
-- [ ] **T705** [US1] `MoonRenderState.showStars` + `MoonViewModel.setShowStars`
+- [x] **T705** [US1] `MoonRenderState.showStars: Boolean = true` + `MoonViewModel.setShowStars(Boolean)` shipped; `MoonViewModelTest` extended with `setShowStars_defaultIsTrue` + `setShowStars_togglesState` (+2 cases). Suite count: **101 green** on Android JVM + iOS sim (was 99 after 04 Phase Final → +2).
   - Add `showStars: Boolean = true` to `MoonRenderState`.
   - Add `fun setShowStars(value: Boolean) { _state.update { it.copy(showStars = value) } }` to `MoonViewModel`.
   - Both renderer hosts read `state.showStars` per frame and conditionally `setSkybox(...)`.

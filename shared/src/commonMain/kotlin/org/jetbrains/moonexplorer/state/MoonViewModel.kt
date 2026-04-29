@@ -54,6 +54,16 @@ class MoonViewModel(initial: MoonRenderState = MoonRenderState()) {
         _state.update { it.copy(sunDirection = direction) }
     }
 
+    /**
+     * Toggle the Filament `Skybox` cubemap. T705 / 07-celestial-background. Direct setter,
+     * not a command — concurrent calls are last-writer-wins which is fine for a boolean
+     * toggle. The renderer hosts read `state.showStars` per frame and conditionally call
+     * `scene.setSkybox(skybox)` / `setSkybox(null)`.
+     */
+    fun setShowStars(value: Boolean) {
+        _state.update { it.copy(showStars = value) }
+    }
+
     fun highlightLocation(id: String?) {
         _state.update { it.copy(highlightedSiteId = id) }
     }

@@ -19,6 +19,7 @@ import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.Renderer
 import com.google.android.filament.Scene
+import com.google.android.filament.Skybox
 import com.google.android.filament.SwapChain
 import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
@@ -86,6 +87,15 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     private var lightInstance: Int = 0
     private var moonTransformInstance: Int = 0
 
+    // T703 / 07-celestial-background — stars Skybox + its backing cubemap Texture.
+    // The cubemap is built once at init from 6 bundled PNG faces; the Skybox is
+    // attached/detached from the scene per-frame based on `state.showStars`.
+    // `lastShowStars` tracks the most-recently-applied flag so we skip redundant
+    // `scene.setSkybox(...)` calls.
+    private val starsCubemap: Texture
+    private val starsSkybox: Skybox
+    private var lastShowStars: Boolean = false  // init attaches if default true
+
     // Last-applied texture set for the per-frame `applyTextureSet` rebind path.
     // Reference identity: equality on TextureSet's data classes uses ByteArray identity, so a
     // new ByteArray (always allocated fresh by the loader on each push) triggers a real rebind.
@@ -110,6 +120,7 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             applySunDirection(state)
             applyMoonRotation(state)
             applyTextureSet(state)
+            applyShowStars(state)
 
             if (renderer.beginFrame(sc, frameTimeNanos)) {
                 renderer.render(view)
@@ -164,6 +175,19 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             .castShadows(false)
             .build(engine, renderableEntity)
         scene.addEntity(renderableEntity)
+
+        // --- 3.5. Stars cubemap + Skybox (T703) --------------------------------------
+        // 6 bundled PNG faces decoded synchronously at init — same pattern as the Moon
+        // material above. ~50 KB total for the placeholder cubemap; small enough to load
+        // without async ceremony. The Skybox is built here and attached/detached per
+        // frame in `applyShowStars` based on `state.showStars`.
+        val starsFaceBytes = STARS_FACES.map { face ->
+            runBlocking { Res.readBytes("files/stars/$face.png") }
+        }
+        starsCubemap = buildCubemapTexture(engine, starsFaceBytes)
+        starsSkybox = Skybox.Builder()
+            .environment(starsCubemap)
+            .build(engine)
 
         // --- 4. Sun (directional light) ----------------------------------------------
         lightEntity = EntityManager.get().create()
@@ -300,6 +324,17 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
      * platforms per ADR-0011). Hd8K is a no-op on Android — KTX2/Basis transcoding lacks a
      * Java binding in Filament 1.71.x; deferred to a future spec.
      */
+    /**
+     * Attach or detach the stars Skybox based on [state.showStars]. T703 / 07-celestial-
+     * background. Skips the call when the flag hasn't changed since the last frame so
+     * the JNI hop is paid only on the user-visible toggle, not every frame.
+     */
+    private fun applyShowStars(state: MoonRenderState) {
+        if (state.showStars == lastShowStars) return
+        scene.setSkybox(if (state.showStars) starsSkybox else null)
+        lastShowStars = state.showStars
+    }
+
     private fun applyTextureSet(state: MoonRenderState) {
         val ts = state.textureSet
         if (ts === lastAppliedTextureSet) return
@@ -360,6 +395,11 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         engine.destroyMaterial(material)
         engine.destroyTexture(albedoTexture)
         engine.destroyTexture(normalTexture)
+        // Stars Skybox + its backing cubemap (T703). Detach from the scene
+        // first; the engine's destroySkybox/destroyTexture handle the rest.
+        scene.skybox = null
+        engine.destroySkybox(starsSkybox)
+        engine.destroyTexture(starsCubemap)
 
         engine.destroyView(view)
         engine.destroyScene(scene)
@@ -501,5 +541,52 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         const val FAR_PLANE = 100.0
 
         const val MATERIAL_PATH = "files/materials/moon.filamat"
+
+        /**
+         * Filament's cubemap face order: [+X, -X, +Y, -Y, +Z, -Z]. The bundled
+         * PNG filenames match this order so the loader iteration is mechanical.
+         */
+        val STARS_FACES = listOf("px", "nx", "py", "ny", "pz", "nz")
+    }
+
+    /**
+     * Build a Filament cubemap [Texture] from 6 PNG byte arrays. Faces are uploaded
+     * via a single bulk-upload call with face offsets into one shared buffer — the
+     * same pattern KtxLoader uses internally. T703 / 07-celestial-background.
+     */
+    private fun buildCubemapTexture(engine: Engine, facePngBytes: List<ByteArray>): Texture {
+        require(facePngBytes.size == 6) { "Cubemap requires exactly 6 face PNGs" }
+        val bitmaps = facePngBytes.map {
+            BitmapFactory.decodeByteArray(it, 0, it.size)
+                ?: error("Failed to decode cubemap face PNG (${it.size} bytes)")
+        }
+        val faceSize = bitmaps[0].width
+        require(bitmaps.all { it.width == faceSize && it.height == faceSize }) {
+            "Cubemap faces must all be square and equal-sized; got ${bitmaps.map { "${it.width}x${it.height}" }}"
+        }
+
+        val faceBytes = faceSize * faceSize * 4
+        val buffer = ByteBuffer.allocateDirect(6 * faceBytes).order(ByteOrder.nativeOrder())
+        val faceOffsets = IntArray(6) { it * faceBytes }
+        for (bmp in bitmaps) {
+            bmp.copyPixelsToBuffer(buffer)
+            bmp.recycle()
+        }
+        buffer.flip()
+
+        val texture = Texture.Builder()
+            .width(faceSize)
+            .height(faceSize)
+            .levels(1)
+            .sampler(Texture.Sampler.SAMPLER_CUBEMAP)
+            .format(Texture.InternalFormat.SRGB8_A8)
+            .build(engine)
+        val descriptor = Texture.PixelBufferDescriptor(
+            buffer,
+            Texture.Format.RGBA,
+            Texture.Type.UBYTE,
+        )
+        texture.setImage(engine, 0, descriptor, faceOffsets)
+        return texture
     }
 }

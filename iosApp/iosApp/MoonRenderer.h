@@ -42,6 +42,25 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)loadTextureSetAlbedo:(NSData *)albedo
                       normal:(NSData *)normal
                         isHd:(BOOL)isHd;
+/**
+ * One-shot at startup. Decodes 6 PNG faces (Filament cubemap order:
+ * +X, -X, +Y, -Y, +Z, -Z), builds a SAMPLER_CUBEMAP Texture, builds
+ * a Skybox, and attaches it to the scene if `showStars` is currently
+ * true. Pushed via `MoonRendererProvider.applyStarsCubemap` from
+ * `MoonAssets.loadAndPushStarsCubemap()`. T704.
+ */
+- (void)loadStarsCubemapPx:(NSData *)px
+                        nx:(NSData *)nx
+                        py:(NSData *)py
+                        ny:(NSData *)ny
+                        pz:(NSData *)pz
+                        nz:(NSData *)nz;
+/**
+ * Toggle the stars Skybox. T704. Idempotent — flips the scene's skybox between
+ * the cached cubemap and `nullptr`. Caches the last-applied flag so repeated
+ * calls with the same value are no-ops.
+ */
+- (void)setShowStars:(BOOL)show;
 - (void)resize:(CGSize)drawableSize;
 - (void)pause;
 - (void)resume;
