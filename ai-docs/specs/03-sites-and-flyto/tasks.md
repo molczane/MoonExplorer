@@ -13,14 +13,14 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T300+
 
 ## Phase 1: Projection math (pure commonMain functions)
 
-- [ ] **T301** [P] [US1] Implement `domain/Projection.kt`
+- [x] **T301** [P] [US1] Implement `domain/Projection.kt`
   - `data class ScreenPos(xPx, yPx, limbAlpha: Float)`.
   - `fun projectSiteToScreen(lat, lon, yaw, pitch, distance, viewportW, viewportH, fovY): ScreenPos?`.
   - Math per `plan.md` § "Projection.kt": `latLonToCartesian` → camera-facing cull (dot product) → camera-space basis (forward / up / right) → perspective divide → NDC → screen px.
   - Limb fade via `smoothstep(0.0, 0.3, dot)`.
   - _Requirements: FR-001, FR-002, FR-003_
 
-- [ ] **T302** [P] [US1] `commonTest`: `ProjectionTest`
+- [x] **T302** [P] [US1] `commonTest`: `ProjectionTest` — 11 cases: centre / far-side cull / limb cull / off-axis east + west / northern + southern / aspect-narrows-horizontal / limb-alpha-monotonic / zero-viewport-returns-null / camera-aimed-at-site-centres-it.
   - Centre (lat=0, lon=0, camera yaw=0/pitch=0/distance=2) → `(viewportW/2, viewportH/2)`.
   - Far side (lon=180°) → null.
   - Limb (lon=90° east, camera straight) → null (dot = 0 cull).
@@ -56,7 +56,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T300+
 
 ## Phase 3: Animated fly-to
 
-- [ ] **T320** [US2] [P] Add `MoonMath.shortestYawDelta` + `easeInOutCubic`
+- [x] **T320** [US2] [P] Add `MoonMath.shortestYawDelta` + `easeInOutCubic` — extended `MoonMathTest` with 8 new cases (zero / quarter-turn / wraparound shorter-path / modular inputs / ease endpoints / accel-decel / symmetry / clamping).
   - `fun shortestYawDelta(fromRad: Float, toRad: Float): Float` — wraps `to − from` into `(−π, π]`.
   - `fun easeInOutCubic(t: Float): Float` — `t < 0.5 ? 4·t³ : 1 − ((-2·t+2)³)/2`. Clamp `t` to `[0, 1]`.
   - _Requirements: FR-004, FR-005_

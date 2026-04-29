@@ -115,3 +115,35 @@ fun greatCircleDistKm(lat1Deg: Double, lon1Deg: Double, lat2Deg: Double, lon2Deg
 
 /** IAU mean lunar radius. */
 const val MOON_RADIUS_KM: Double = 1737.4
+
+/**
+ * Wraps `toRad − fromRad` into `(−π, π]`. T320 / 03-sites-and-flyto. Used by
+ * `MoonExplorerActionsImpl.flyToMoonLocation` so that a 350° angular delta becomes −10° —
+ * the camera takes the shorter path instead of spinning the long way around.
+ */
+fun shortestYawDelta(fromRad: Float, toRad: Float): Float {
+    val twoPi = (2.0 * PI).toFloat()
+    val pif = PI.toFloat()
+    var d = (toRad - fromRad) % twoPi
+    if (d > pif) d -= twoPi
+    if (d < -pif) d += twoPi
+    return d
+}
+
+/**
+ * Cubic ease-in-out: `t ∈ [0, 1] → eased ∈ [0, 1]` with `eased(0) = 0`, `eased(0.5) = 0.5`,
+ * `eased(1) = 1`, symmetric around 0.5. T320. Matches the perceptual feel of Material's
+ * `FastOutSlowInEasing` — acceleration in the first half, deceleration in the second.
+ *
+ * Out-of-range `t` is clamped to `[0, 1]` defensively (the time-source loop in
+ * `flyToMoonLocation` already coerces, but this keeps the function safe to call standalone).
+ */
+fun easeInOutCubic(t: Float): Float {
+    val tc = t.coerceIn(0f, 1f)
+    return if (tc < 0.5f) {
+        4f * tc * tc * tc
+    } else {
+        val u = -2f * tc + 2f
+        1f - (u * u * u) * 0.5f
+    }
+}
