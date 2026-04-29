@@ -1,0 +1,140 @@
+[
+  {
+    "id": "mare_tranquillitatis",
+    "name": "Mare Tranquillitatis",
+    "subtitle": "Sea of Tranquility",
+    "lat": 8.5,
+    "lon": 31.4,
+    "type": "MARE",
+    "description": "A basaltic plain on the Moon's near side. Apollo 11's landing site (Tranquillity Base) sits at its south-western edge."
+  },
+  {
+    "id": "mare_serenitatis",
+    "name": "Mare Serenitatis",
+    "subtitle": "Sea of Serenity",
+    "lat": 28.0,
+    "lon": 17.0,
+    "type": "MARE",
+    "description": "A round, dark basin north-east of Mare Tranquillitatis. Apollo 17 landed at its south-eastern margin in the Taurus-Littrow valley."
+  },
+  {
+    "id": "mare_imbrium",
+    "name": "Mare Imbrium",
+    "subtitle": "Sea of Showers",
+    "lat": 32.8,
+    "lon": -15.6,
+    "type": "MARE",
+    "description": "One of the largest impact basins on the Moon — about 1240 km across, formed ~3.85 billion years ago. Apollo 15 landed at its eastern edge near Hadley Rille."
+  },
+  {
+    "id": "mare_crisium",
+    "name": "Mare Crisium",
+    "subtitle": "Sea of Crises",
+    "lat": 17.0,
+    "lon": 59.1,
+    "type": "MARE",
+    "description": "An isolated round mare on the eastern near side, easily visible to the naked eye. The Soviet Luna 24 sample-return mission landed here in 1976."
+  },
+  {
+    "id": "oceanus_procellarum",
+    "name": "Oceanus Procellarum",
+    "subtitle": "Ocean of Storms",
+    "lat": 18.4,
+    "lon": -57.4,
+    "type": "MARE",
+    "description": "The largest mare region on the Moon, spanning over 2500 km of the western near side. Apollo 12 landed here, near the older Surveyor 3 probe."
+  },
+  {
+    "id": "tycho",
+    "name": "Tycho",
+    "lat": -43.31,
+    "lon": -11.36,
+    "type": "CRATER",
+    "description": "A bright ray crater 86 km wide in the southern highlands, formed about 108 million years ago. Its rays radiate over much of the near side at full Moon."
+  },
+  {
+    "id": "copernicus",
+    "name": "Copernicus",
+    "lat": 9.62,
+    "lon": -20.08,
+    "type": "CRATER",
+    "description": "A young (~800 million years) 93 km crater with terraced walls and a central peak, ringed by a prominent ejecta system across Mare Insularum."
+  },
+  {
+    "id": "plato",
+    "name": "Plato",
+    "lat": 51.6,
+    "lon": -9.4,
+    "type": "CRATER",
+    "description": "A 101 km crater with an unusually dark lava-flooded floor, perched on the northern shore of Mare Imbrium. Easy to spot in any small telescope."
+  },
+  {
+    "id": "aristarchus",
+    "name": "Aristarchus",
+    "lat": 23.7,
+    "lon": -47.4,
+    "type": "CRATER",
+    "description": "The brightest large feature on the Moon's near side — a 40 km young crater in Oceanus Procellarum. Site of recurring transient lunar phenomena."
+  },
+  {
+    "id": "kepler",
+    "name": "Kepler",
+    "lat": 8.12,
+    "lon": -38.0,
+    "type": "CRATER",
+    "description": "A small (32 km) but bright young crater in Oceanus Procellarum, with a striking ray system that overlaps with Copernicus's to the east."
+  },
+  {
+    "id": "apollo_11",
+    "name": "Apollo 11",
+    "subtitle": "Tranquillity Base",
+    "lat": 0.67,
+    "lon": 23.47,
+    "type": "LANDING_SITE",
+    "description": "First crewed lunar landing — Neil Armstrong and Buzz Aldrin set foot here on 20 July 1969. Located in southern Mare Tranquillitatis."
+  },
+  {
+    "id": "apollo_14",
+    "name": "Apollo 14",
+    "subtitle": "Fra Mauro",
+    "lat": -3.65,
+    "lon": -17.47,
+    "type": "LANDING_SITE",
+    "description": "Third crewed lunar landing, February 1971. Targeted highland material thought to be ejecta from the Imbrium impact. Alan Shepard hit golf balls here."
+  },
+  {
+    "id": "apollo_15",
+    "name": "Apollo 15",
+    "subtitle": "Hadley-Apennine",
+    "lat": 26.13,
+    "lon": 3.63,
+    "type": "LANDING_SITE",
+    "description": "Fourth crewed landing, July 1971 — first to use the Lunar Roving Vehicle. Sampled the Apennine Mountains and the meandering Hadley Rille channel."
+  },
+  {
+    "id": "apollo_17",
+    "name": "Apollo 17",
+    "subtitle": "Taurus-Littrow",
+    "lat": 20.19,
+    "lon": 30.77,
+    "type": "LANDING_SITE",
+    "description": "Final Apollo landing, December 1972 — geologist Harrison Schmitt's mission to a highland-mare boundary. The last crewed visit to the Moon to date."
+  },
+  {
+    "id": "change_5",
+    "name": "Chang'e 5",
+    "subtitle": "Mons Rümker",
+    "lat": 43.06,
+    "lon": -51.92,
+    "type": "LANDING_SITE",
+    "description": "Chinese sample-return mission, December 2020. Brought back 1.7 kg of basalt fragments dated to ~2 Ga — the youngest lunar rocks ever sampled."
+  },
+  {
+    "id": "south_pole_aitken",
+    "name": "South Pole–Aitken Basin",
+    "lat": -53.0,
+    "lon": 169.0,
+    "type": "OTHER",
+    "description": "The largest known impact basin in the Solar System, ~2500 km across and 13 km deep, mostly on the Moon's far side. A target of multiple proposed sample-return missions."
+  }
+]

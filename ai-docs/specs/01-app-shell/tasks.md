@@ -13,25 +13,25 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T200+
 
 ## Phase 1: Site catalog data layer
 
-- [ ] **T201** Author `composeResources/files/sites.json` with the 16 curated entries
+- [x] **T201** Author `composeResources/files/sites.json` with the 16 curated entries
   - Use the roster table in `plan.md` § "Curated 16-site roster" for the `id` / `type` columns.
   - Look up canonical lat/lon from the [USGS Lunar Gazetteer](https://planetarynames.wr.usgs.gov/) — accept ±0.1° rounding.
   - Each entry has a 60–200 character `description` written for a curious-but-non-expert reader.
   - File size ≤ 4 KB.
   - _Requirements: FR-001, NFR bundle-size_
 
-- [ ] **T202** [P] Implement `domain/MoonSite.kt` in commonMain
+- [x] **T202** [P] Implement `domain/MoonSite.kt` in commonMain
   - `@Serializable data class MoonSite(id, name, subtitle?, lat, lon, type, description)`.
   - `@Serializable enum class SiteType { MARE, CRATER, LANDING_SITE, OTHER }`.
   - _Requirements: FR-001, FR-003, ADR-0005 (with extensions per plan.md)_
 
-- [ ] **T203** [P] Implement `domain/SiteCatalog.kt` in commonMain
+- [x] **T203** [P] Implement `domain/SiteCatalog.kt` in commonMain
   - `class SiteCatalog(private val sites: List<MoonSite>) { fun search(...); fun byId(...) }`.
   - `companion object { suspend fun loadBundled(): SiteCatalog }` reading via `Res.readBytes("files/sites.json")` + `AssetManifest`-style `Json { ignoreUnknownKeys = true }` parser.
   - Search: case-insensitive substring on `name` + `subtitle`, alphabetical by `name`, capped at `limit`.
   - _Requirements: FR-002_
 
-- [ ] **T204** [P] `commonTest`: `SiteCatalogTest`
+- [x] **T204** [P] `commonTest`: `SiteCatalogTest` — 11 cases against a hardcoded sample list (search by name / subtitle, case-insensitive, empty + whitespace queries, sort order, limit, byId hit + miss, all-returns-bundled-order). `loadBundled()` deferred to runtime exercise — the AGP-9-alpha `Res.readBytes`-in-commonTest gap is the same one that deferred T143.
   - Load bundled JSON, assert ≥ 16 entries.
   - `search("tych")` returns Tycho.
   - `search("MARE", limit = 3)` returns the first three mare alphabetically (case-insensitive).
