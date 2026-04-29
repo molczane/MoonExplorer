@@ -105,19 +105,19 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T700+
 
 ## Phase 4: Settings toggles
 
-- [ ] **T730** [US4] Update `SettingsSheet` signature + add 2 `Switch` rows
+- [x] **T730** [US4] Update `SettingsSheet` signature + add 2 `Switch` rows — sheet body rewritten from the 01-shell "Coming soon" placeholder to a "Celestial background" section with two toggle rows ("Show stars", "Show sun"). New params: `showStars / showSun: Boolean`, `onShowStarsChange / onShowSunChange: (Boolean) -> Unit`. Private `ToggleRow` composable holds the Material3 `Switch + Text` layout; reusable for any future settings group.
   - New params: `showStars: Boolean`, `showSun: Boolean`, `onShowStarsChange: (Boolean) -> Unit`, `onShowSunChange: (Boolean) -> Unit`.
   - Two `Row` entries inside the existing sheet, each with `Text(label) + Switch(checked, onCheckedChange)`. Material3 styling. Labels: "Show stars" and "Show sun".
   - _Requirements: FR-009_
 
-- [ ] **T731** [P] [US4] `MoonViewModelTest` extensions
+- [x] **T731** [P] [US4] `MoonViewModelTest` coverage already landed in Phase 1 (T705: `setShowStars_defaultIsTrue` + `setShowStars_togglesState`) and Phase 2 (T715: `setShowSun_defaultIsTrue` + `setShowSun_togglesState`). The plan's idempotent-StateFlow tests are intentionally skipped — they'd test Kotlin Coroutines' StateFlow distinct-equals semantics rather than this code's contract; the existing 4 cases cover the API surface. Suite stays at **103 green**.
   - `setShowStars_togglesState`: default true → setShowStars(false) → state.showStars == false; setShowStars(true) again → state.showStars == true.
   - `setShowSun_togglesState`: same shape.
   - `setShowStars_idempotent`: calling setShowStars(true) when already true doesn't emit a new state value to the StateFlow (StateFlow's distinct-equals semantics).
   - `setShowSun_idempotent`: same shape.
   - _Requirements: SC-006_
 
-- [ ] **T732** [US4] Wire `SettingsSheet` in `MoonExplorerScreen`
+- [x] **T732** [US4] Wire `SettingsSheet` in `MoonExplorerScreen` — the `SettingsSheet(...)` call site at the bottom of `MoonExplorerScreen` now passes `state.showStars` / `state.showSun` plus `viewModel::setShowStars` / `viewModel::setShowSun` callbacks. No new state holders at the screen level (direct setters; no animation pipeline, no `currentXxxJob` tracking).
   - The existing `SettingsSheet(...)` call site gains four new args bound to `state.showStars`, `state.showSun`, `viewModel::setShowStars`, `viewModel::setShowSun`.
   - No new state holders at the screen level — these are direct setters, not animated commands; no `currentXxxJob` tracking needed.
   - _Requirements: FR-009, FR-010_

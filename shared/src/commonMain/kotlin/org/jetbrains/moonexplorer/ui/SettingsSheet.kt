@@ -1,6 +1,8 @@
 package org.jetbrains.moonexplorer.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -9,20 +11,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * T222 — Settings entry placeholder. The spec's job here is to land the *entry affordance*,
- * not a real settings UX (units, lat/lon format, accessibility). When real settings need a
- * home, replace this body and keep the same `onDismissRequest` contract.
+ * Settings sheet. T222 (01-app-shell) shipped the entry affordance; T730 / 07-celestial-
+ * background turns the placeholder body into its first real job — toggles for the
+ * celestial backdrop (`showStars` and `showSun`). Both flags are session-only; persistence
+ * across app restarts is documented as out-of-scope for v1.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSheet(
+    showStars: Boolean,
+    showSun: Boolean,
+    onShowStarsChange: (Boolean) -> Unit,
+    onShowSunChange: (Boolean) -> Unit,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -39,13 +48,43 @@ fun SettingsSheet(
                 .navigationBarsPadding(),
         ) {
             Text(text = "Settings", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(20.dp))
+
             Text(
-                text = "Coming soon. Future builds will surface units, coordinate format, and accessibility options here.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "Celestial background",
+                style = MaterialTheme.typography.titleMedium,
             )
+            Spacer(Modifier.height(8.dp))
+            ToggleRow(
+                label = "Show stars",
+                checked = showStars,
+                onCheckedChange = onShowStarsChange,
+            )
+            ToggleRow(
+                label = "Show sun",
+                checked = showSun,
+                onCheckedChange = onShowSunChange,
+            )
+
             Spacer(Modifier.height(28.dp))
         }
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

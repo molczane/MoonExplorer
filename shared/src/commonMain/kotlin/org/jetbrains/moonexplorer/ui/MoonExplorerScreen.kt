@@ -241,6 +241,16 @@ fun MoonExplorerScreen(
     }
 
     if (settingsSheetVisible) {
-        SettingsSheet(onDismissRequest = { settingsSheetVisible = false })
+        // T732 / 07-celestial-background — the SettingsSheet placeholder from 01-shell
+        // finally gets its first real toggles. Both bind directly to MoonRenderState
+        // flags via viewModel setters; the renderer hosts read these per frame and
+        // attach/detach the Skybox + sun Renderable + bloom config accordingly.
+        SettingsSheet(
+            showStars = state.showStars,
+            showSun = state.showSun,
+            onShowStarsChange = viewModel::setShowStars,
+            onShowSunChange = viewModel::setShowSun,
+            onDismissRequest = { settingsSheetVisible = false },
+        )
     }
 }
