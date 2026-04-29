@@ -61,7 +61,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T300+
   - `fun easeInOutCubic(t: Float): Float` — `t < 0.5 ? 4·t³ : 1 − ((-2·t+2)³)/2`. Clamp `t` to `[0, 1]`.
   - _Requirements: FR-004, FR-005_
 
-- [ ] **T321** [US2] Rework `MoonExplorerActionsImpl.flyToMoonLocation`
+- [x] **T321** [US2] Rework `MoonExplorerActionsImpl.flyToMoonLocation` — `durationMs ≤ 0` keeps the snap path (FR-009 escape hatch); `durationMs > 0` runs a `TimeSource.Monotonic` + `delay(16)` loop using `shortestYawDelta` + `easeInOutCubic`. Mutex withLock + cancellable delay → screen-level `currentFlyJob.cancel()` interrupts cleanly.
   - `durationMs <= 0` → snap (existing path; preserves T212 expectations).
   - `durationMs > 0` → coroutine loop:
     ```
@@ -77,14 +77,14 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T300+
   - Yaw delta uses `shortestYawDelta`. The existing `mutex.withLock` keeps two concurrent fly-tos serialized — the loop's `delay` is cancellable so the screen-level `currentFlyJob.cancel()` interrupts cleanly.
   - _Requirements: FR-004, FR-005, FR-006, FR-009_
 
-- [ ] **T322** [US2] [P] Extend `MoonExplorerActionsImplTest`
+- [x] **T322** [US2] [P] Extend `MoonExplorerActionsImplTest` — renamed snap test to `flyToMoonLocation_durationZero_snaps`; added `animated_reachesTargetExactly` (50 ms run, eased(1) = 1 → state at target), `animated_progressesMonotonically` (mid-state strictly between 0 and target, final = target), `cancelMidAnimation_leavesPartialState` (1000 ms run, cancel after 120 ms, state strictly between), `yawWrap_takesShortPath` (custom initial state at +170°, target at -170°, asserts mid yaw stays on the +20° short path not the -340° long path). Updated concurrent test to use 30 ms animations to keep the suite fast.
   - `flyToMoonLocation("tycho", durationMs = 0)` — same expectations as 01-shell's existing test; reaffirms snap path still works.
   - `flyToMoonLocation("tycho", durationMs = 50)` — collect StateFlow values with `state.take(K).toList()`; assert intermediate yaws/pitches strictly between start and target, monotonic toward target.
   - Cancellation: in a `launch { actions.flyToMoonLocation("apollo_11", durationMs = 1000) }`, cancel the job after ~100 ms; assert state is between start and Apollo 11 target (not at target).
   - Yaw wrap: from yaw = 170° to a target with lon = −170° (or vice versa) — interpolated state should stay within ±10° of the start initially (shorter path), not hurtle through the 0° meridian.
   - _Requirements: SC-006_
 
-- [ ] **T323** [US2] Track `currentFlyJob` in `MoonExplorerScreen`
+- [x] **T323** [US2] Track `currentFlyJob` in `MoonExplorerScreen` — `var currentFlyJob: Job?` remembered at screen level; `onCenterClick` now does `currentFlyJob?.cancel(); currentFlyJob = scope.launch { ... }` so a tap-mid-animation interrupts the prior fly cleanly.
   - `var currentFlyJob: Job? by remember { mutableStateOf(null) }`.
   - In `onCenterClick`: `currentFlyJob?.cancel(); currentFlyJob = scope.launch { actions?.flyToMoonLocation(site.id) }`.
   - Same pattern wherever else a fly-to fires (e.g., marker tap if the click handler also triggers a fly).

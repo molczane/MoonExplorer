@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Job
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -87,6 +88,13 @@ fun MoonExplorerScreen(
 
     var aboutSheetVisible by remember { mutableStateOf(false) }
     var settingsSheetVisible by remember { mutableStateOf(false) }
+
+    // T323 — track the in-flight fly-to so a new tap can cancel a prior animation cleanly.
+    // Each cancel() lets the actions impl unwind via cancellable delay() inside the Mutex'd
+    // loop; the new fly-to then acquires the Mutex and starts from the *current* state, which
+    // gives the user the "fluid hand-off" feel from US2 instead of waiting for the prior 1.5 s
+    // animation to finish.
+    var currentFlyJob: Job? by remember { mutableStateOf<Job?>(null) }
 
     var searchExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -186,10 +194,13 @@ fun MoonExplorerScreen(
             site = site,
             onCenterClick = {
                 actions?.let { a ->
-                    // flyToMoonLocation is suspend; dispatch through the screen's scope so
-                    // the click handler returns immediately. The Mutex inside the impl
-                    // serialises against any other concurrent action.
-                    scope.launch { a.flyToMoonLocation(site.id) }
+                    // T323 — cancel any in-flight fly-to before kicking off the new one. The
+                    // Mutex inside the impl still serialises against any other concurrent
+                    // action, but cancellation makes the hand-off snappy: the prior delay()
+                    // throws CancellationException, the loop unwinds, the Mutex unlocks, and
+                    // the new fly-to acquires it without waiting out the full 1.5 s.
+                    currentFlyJob?.cancel()
+                    currentFlyJob = scope.launch { a.flyToMoonLocation(site.id) }
                 }
             },
             onDismissRequest = { infoSheetSite = null },

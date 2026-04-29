@@ -5,13 +5,17 @@ import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.time.TimeSource
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.jetbrains.moonexplorer.domain.MoonSite
 import org.jetbrains.moonexplorer.domain.SiteCatalog
 import org.jetbrains.moonexplorer.domain.Vec3
+import org.jetbrains.moonexplorer.domain.easeInOutCubic
 import org.jetbrains.moonexplorer.domain.greatCircleDistKm
 import org.jetbrains.moonexplorer.domain.latLonToYawPitch
+import org.jetbrains.moonexplorer.domain.shortestYawDelta
 import org.jetbrains.moonexplorer.domain.yawPitchToLatLon
 import org.jetbrains.moonexplorer.state.MoonViewModel
 
@@ -69,9 +73,38 @@ class MoonExplorerActionsImpl(
     override suspend fun flyToMoonLocation(id: String, durationMs: Long): ActionAck = mutex.withLock {
         val site = catalog.byId(id)
             ?: return@withLock ActionAck(ok = false, message = "no such site: $id")
-        // 01-app-shell ships the snap path; 03-sites-and-flyto reads `durationMs` for the lerp.
-        val (yaw, pitch) = latLonToYawPitch(site.lat, site.lon)
-        viewModel.setCameraTarget(yaw, pitch)
+        val (targetYaw, targetPitch) = latLonToYawPitch(site.lat, site.lon)
+
+        if (durationMs <= 0L) {
+            // Snap path (FR-009) — preserves T212's snap-path expectations and gives callers an
+            // immediate-positioning escape hatch.
+            viewModel.setCameraTarget(targetYaw, targetPitch)
+            return@withLock ActionAck(ok = true, message = "centered on ${site.name}")
+        }
+
+        // T321 / 03-sites-and-flyto — animated path. Cubic ease-in-out, shorter-yaw-path.
+        // The loop's delay() is cancellable; the screen-level `currentFlyJob.cancel()` is what
+        // interrupts a fly-to mid-animation so a subsequent fly can start cleanly. The Mutex's
+        // withLock guarantees we either finish or unwind via the cancellation finally before
+        // the next caller acquires.
+        val start = viewModel.state.value
+        val startYaw = start.cameraYawRad
+        val startPitch = start.cameraPitchRad
+        val yawDelta = shortestYawDelta(startYaw, targetYaw)
+        val pitchDelta = targetPitch - startPitch
+
+        val source = TimeSource.Monotonic.markNow()
+        while (true) {
+            val elapsedMs = source.elapsedNow().inWholeMilliseconds
+            val t = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+            val eased = easeInOutCubic(t)
+            viewModel.setCameraTarget(
+                yawRad = startYaw + yawDelta * eased,
+                pitchRad = startPitch + pitchDelta * eased,
+            )
+            if (t >= 1f) break
+            delay(FRAME_MS)
+        }
         ActionAck(ok = true, message = "centered on ${site.name}")
     }
 
@@ -119,5 +152,10 @@ class MoonExplorerActionsImpl(
         val whole = tenths / 10
         val frac = if (tenths < 0) -tenths % 10 else tenths % 10
         return "$whole.$frac°"
+    }
+
+    private companion object {
+        /** ~60 FPS frame budget for the animated fly-to loop. T321. */
+        const val FRAME_MS: Long = 16L
     }
 }
