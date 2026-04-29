@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.remember
-import org.jetbrains.moonexplorer.assets.StorageDir
+import org.jetbrains.moonexplorer.assets.AndroidStorageDir
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -14,7 +14,7 @@ class MainActivity : ComponentActivity() {
 
         val ctx = applicationContext
         setContent {
-            val storage = remember(ctx) { StorageDir(ctx) }
+            val storage = remember(ctx) { AndroidStorageDir(ctx) }
             App(storage = storage)
         }
     }

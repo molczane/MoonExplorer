@@ -55,6 +55,10 @@ The following acceptance criteria from `spec.md` are coded + tested at the unit-
 
 User-side measurement procedure when ready: Android Studio Profiler → "Frame Rate" track for Android; Xcode Frame Capture or the SwiftUI inspector → FPS HUD for iOS.
 
+## Hand-off
+
+The spike's deferred items — **real NASA SVS textures, async asset loading, attribution UI, HD streaming** — landed in `02-moon-renderer-mvp`. ADR-0009's items #1 (PNG placeholder textures) and #6 (`runBlocking` in `MoonHost.init`) are resolved on Android; ADR-0011 narrows the original "KTX2 + Basis on both platforms" plan to "PNG bundled + KTX2-on-iOS-only HD streaming" because Filament 1.71.x has no public Java binding for `Ktx2Reader` on Android. See [`../02-moon-renderer-mvp/results.md`](../02-moon-renderer-mvp/results.md) for the spec's own results write-up. Hand-off branch: `main`.
+
 ## References
 
 - [`spec.md`](spec.md) — acceptance criteria

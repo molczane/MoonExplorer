@@ -18,44 +18,44 @@ import platform.Foundation.writeToURL
 import platform.posix.memcpy
 
 @OptIn(ExperimentalForeignApi::class)
-actual class StorageDir {
+class IosStorageDir : StorageDir {
     private val docDirURL: NSURL = run {
         val urls = NSFileManager.defaultManager.URLsForDirectory(
             directory = NSDocumentDirectory,
             inDomains = NSUserDomainMask,
         )
         urls.firstOrNull() as? NSURL
-            ?: error("StorageDir: no document directory available")
+            ?: error("IosStorageDir: no document directory available")
     }
 
-    actual suspend fun read(name: String): ByteArray? = withContext(Dispatchers.Default) {
+    override suspend fun read(name: String): ByteArray? = withContext(Dispatchers.Default) {
         val url = urlFor(name)
         val data = NSData.dataWithContentsOfURL(url) ?: return@withContext null
         nsDataToByteArray(data)
     }
 
-    actual suspend fun writeAtomically(name: String, bytes: ByteArray) {
+    override suspend fun writeAtomically(name: String, bytes: ByteArray) {
         withContext(Dispatchers.Default) {
             val url = urlFor(name)
             // writeToURL:atomically: writes to a temp + atomically renames into place.
             val ok = byteArrayToNSData(bytes).writeToURL(url, atomically = true)
-            if (!ok) error("StorageDir: write failed for $name")
+            if (!ok) error("IosStorageDir: write failed for $name")
         }
     }
 
-    actual fun exists(name: String): Boolean {
+    override fun exists(name: String): Boolean {
         val path = urlFor(name).path ?: return false
         return NSFileManager.defaultManager.fileExistsAtPath(path)
     }
 
-    actual fun delete(name: String) {
+    override fun delete(name: String) {
         // Best-effort: nil error pointer skips reporting; missing file is success-equivalent.
         NSFileManager.defaultManager.removeItemAtURL(urlFor(name), null)
     }
 
     private fun urlFor(name: String): NSURL =
         docDirURL.URLByAppendingPathComponent(name)
-            ?: error("StorageDir: bad path component '$name'")
+            ?: error("IosStorageDir: bad path component '$name'")
 
     private fun nsDataToByteArray(data: NSData): ByteArray {
         val len = data.length.toInt()
