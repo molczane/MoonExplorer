@@ -45,19 +45,19 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
   - Produces `moon_normal_2k.png` and `moon_normal_8k.png` under `tools/build-ktx2/.cache/`.
   - _Requirements: FR-001, FR-008_
 
-- [ ] **T106** Author `tools/build-ktx2/build.sh` + run it
+- [x] **T106** Author `tools/build-ktx2/build.sh` + run it
   - For albedo (`lroc_color_poles_2k.tif` and `_8k.tif` resampled): `toktx --t2 --bcmp --genmipmap --assign_oetf srgb`.
   - For normals: `toktx --t2 --uastc 2 --uastc_rdo_l 1.0 --zcmp 18 --genmipmap --assign_oetf linear`.
   - Produces `moon_albedo_{2k,8k}.ktx2` + `moon_normal_{2k,8k}.ktx2`.
   - `tools/build-ktx2/README.md` covers `brew install ktx` prerequisite + commands.
   - _Requirements: FR-001, FR-008, ADR-0004_
 
-- [ ] **T107** Author `tools/build-ktx2/manifest.py` + run it
+- [x] **T107** Author `tools/build-ktx2/manifest.py` + run it
   - Reads the four KTX2 files, computes SHA-256, writes `manifest.json` matching `AssetManifest` schema.
   - Bumps `version` field on every regeneration (use the date — `2026-04-28-1` etc. — so cache invalidation is deterministic).
   - _Requirements: FR-009_
 
-- [ ] **T108** Bundle 2 K KTX2 + manifest into `composeResources/files/`
+- [x] **T108** Bundle 2 K KTX2 + manifest into `composeResources/files/`
   - Copy `moon_albedo_2k.ktx2` and `moon_normal_2k.ktx2` to `shared/src/commonMain/composeResources/files/textures/`.
   - Copy `manifest.json` to `shared/src/commonMain/composeResources/files/`.
   - **Delete** the Phase 0 placeholder PNGs (`moon_albedo_2k.png`, `moon_albedo_2k_alt.png`, `moon_normal_2k.png`).
