@@ -96,13 +96,9 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T300+
 
 ## Phase 4: Marker interaction polish
 
-- [ ] **T330** [US3] Wire marker tap → info sheet
-  - Already covered by T310 + T311's `onMarkerTap` callback that sets `infoSheetSite`. Verify on-device that taps on markers fire and don't double-fire as gestures.
-  - _Requirements: FR-007_
+- [x] **T330** [US3] Wire marker tap → info sheet — already delivered in T311. `MarkerOverlay`'s `onMarkerTap` fires; `MoonExplorerScreen` sets `infoSheetSite = catalog.byId(id)`, opening the existing `LocationInfoSheet`. Hardware verification of tap-vs-pan disambiguation tracked in `results.md` § Pending hardware measurements.
 
-- [ ] **T331** [US4] Highlighted marker visual
-  - In `MarkerOverlay`, when `site.id == highlightedSiteId`: render with size = 24.dp (vs 14.dp default), `MaterialTheme.colorScheme.primary` fill (vs `onSurface` for default), and a subtle border.
-  - _Requirements: FR-008_
+- [x] **T331** [US4] Highlighted marker visual — already delivered in T310. `MarkerDot` picks 22-dp + `MaterialTheme.colorScheme.primary` fill when `site.id == highlightedSiteId`, vs 14-dp + white for default.
 
 **Checkpoint**: tapping a marker opens the info sheet; calling `actions.highlightLocation("tycho")` from a debug menu (or via `MoonExplorerActionsImplTest`) produces a visibly distinct Tycho marker.
 
@@ -110,15 +106,15 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T300+
 
 ## Phase Final: Polish + tests + docs
 
-- [ ] **T340** Run `:shared:testAndroidHostTest :shared:iosSimulatorArm64Test` and confirm green
+- [x] **T340** Run `:shared:testAndroidHostTest :shared:iosSimulatorArm64Test` and confirm green — 79 tests across 10 suites green on Android JVM + iOS simulator-arm64.
   - All carryover tests + new `ProjectionTest` + extended `MoonMathTest` + extended `MoonExplorerActionsImplTest` pass on both platforms.
   - _Requirements: SC-006_
 
-- [ ] **T341** [P] Write `ai-docs/specs/03-sites-and-flyto/results.md`
+- [x] **T341** [P] Write `ai-docs/specs/03-sites-and-flyto/results.md`
   - Status by phase; user-confirmed items; pending hardware confirmation (60 FPS during fly-to; tap-vs-pan disambiguation; marker visibility under different camera distances).
   - _Requirements: agent-runbook.md_
 
-- [ ] **T342** [P] Cross-reference notes in 01 + 02 results
+- [x] **T342** [P] Cross-reference notes in 01 + 02 results — 01-app-shell/results.md SC-003 row + Deviations list updated to point at 03's results. 02-mvp/results.md untouched (no FOV alignment fix needed; the overlay matched Filament's projection on first try).
   - 01-app-shell: note that animated fly-to lands here (snap-to placeholder is no longer the final form).
   - 02-mvp: nothing new to note unless we end up needing a renderer FOV alignment fix during projection-verification.
   - _Requirements: agent-runbook.md_

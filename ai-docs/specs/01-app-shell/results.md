@@ -17,7 +17,7 @@ T231 record of what shipped, what's user-confirmed, and what's still pending har
 |---|---|---|
 | **SC-001** Search "tycho" finds Tycho | ✓ code + unit-test | `MoonExplorerActionsImplTest.searchMoonLocations_findsBySubstring`. Visual confirmation pending hardware. |
 | **SC-002** Tap result → info sheet | ✓ code-complete | `MoonExplorerScreen` `onResultTap` sets `infoSheetSite`; `LocationInfoSheet` opens. Visual UX pending hardware. |
-| **SC-003** "Center on this site" snaps camera | ✓ code + unit-test | `MoonExplorerActionsImplTest.flyToMoonLocation_advancesCameraToSiteCoords` confirms `cameraYawRad/Pitch` advance to the expected values within 1e-4 rad. Visual confirmation pending hardware. |
+| **SC-003** "Center on this site" snaps camera | ✓ code + unit-test | `MoonExplorerActionsImplTest.flyToMoonLocation_advancesCameraToSiteCoords` confirms `cameraYawRad/Pitch` advance to the expected values within 1e-4 rad. Visual confirmation pending hardware. **Note (2026-04-29):** the snap path was deliberately retained — `03-sites-and-flyto` adds the animated lerp at `durationMs > 0` while `durationMs = 0` keeps the snap escape hatch (FR-009 in 03's spec). The previous test was renamed to `flyToMoonLocation_durationZero_snaps`; new animation cases live alongside it. See [`../03-sites-and-flyto/results.md`](../03-sites-and-flyto/results.md). |
 | **SC-004** Settings opens placeholder | ✓ code-complete | About → Settings → SettingsSheet sequential flow wired in `MoonExplorerScreen`. Visual UX pending hardware. |
 | **SC-005** `MoonExplorerActions` matches ADR-0005 | ✓ verified | All eight methods present with the locked signatures. The only deviation is `MoonSite`'s shape (subtitle/type/description vs ADR-0005's `tags: List<String>`) — documented in `plan.md` § "MoonSite" and called out in `MoonSite.kt`'s class doc. |
 | **SC-006** `:shared:allTests` passes | ✓ green | `testAndroidHostTest` + `iosSimulatorArm64Test` — 56 tests across 9 suites, including 11 new SiteCatalogTest cases + 9 new MoonExplorerActionsImplTest cases. |
@@ -43,7 +43,7 @@ T231 record of what shipped, what's user-confirmed, and what's still pending har
 
 - **`MoonSite` shape** extended from ADR-0005's `tags: List<String>` to `subtitle? + type + description` for the bundled catalog. Rationale and forward-compat notes in `plan.md` § "MoonSite". Future Koog tools (Phase 3) read whichever fields they need via `Json { ignoreUnknownKeys = true }`.
 - **`SiteCatalog.loadBundled()` unit test** deferred — same Compose-Resources-in-commonTest gap that deferred `MoonAssetLoaderTest` (T143) in `02-moon-renderer-mvp`. The bundled JSON is exercised end-to-end at app startup; the runtime parse failing would be a hard crash the user would notice immediately.
-- **Animated fly-to** stays out of scope — `flyToMoonLocation` snaps. `03-sites-and-flyto` adds the lerp. The `durationMs` parameter is parsed but unused.
+- ~~**Animated fly-to** stays out of scope — `flyToMoonLocation` snaps.~~ **Resolved 2026-04-29 by `03-sites-and-flyto`** — the impl now animates when `durationMs > 0` with cubic ease-in-out + shortest-yaw-path; `durationMs = 0` keeps the snap path (FR-009).
 - **`setLightingPreset`** returns `ActionAck(ok = false, …)`. Real lighting presets are a future-spec polish task.
 - **`compareLocations`** computes geodesic distance only; richer comparison notes deferred.
 
