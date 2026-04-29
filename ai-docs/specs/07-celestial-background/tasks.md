@@ -128,25 +128,17 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T700+
 
 ## Phase Final: Polish + tests + docs
 
-- [ ] **T740** Run `:shared:testAndroidHostTest :shared:iosSimulatorArm64Test` — all suites green
+- [x] **T740** Re-ran `:shared:testAndroidHostTest :shared:iosSimulatorArm64Test` — **103 tests across 11 suites green** on Android JVM + iOS simulator-arm64. Per-suite breakdown lives in `results.md` § Tests. New since 04-sun-control's 99: `MoonViewModelTest` (+4 from `setShowStars` / `setShowSun` × default + togglesState across Phase 1 + Phase 2). One non-fatal deprecation warning on Filament's `setImage(IntArray)` cubemap variant — documented in `results.md` § Deviations.
   - Carryover tests (99 from 04-sun-control's Phase Final) + new `MoonViewModelTest` cases for `setShowStars` / `setShowSun` (~4 new cases). Target ~103 tests across 11 suites.
   - _Requirements: SC-006_
 
-- [ ] **T741** [P] Write `ai-docs/specs/07-celestial-background/results.md`
-  - Status by phase; user-confirmed items vs pending hardware confirmation (eclipse occlusion looks right, bloom tuning across presets, 60 FPS sustained on target devices, settings toggles within one frame).
-  - Test counts table.
-  - Deviations log: ADR-0004 amendment (ESO attribution), bundled-PNG cubemap not KTX2 (per ADR-0011), bloom always-on when sun-on (no separate flag), settings persistence deferred.
-  - Final tuned values for `SUN_EMISSIVE_INTENSITY` + bloom `threshold` + bloom `strength` baked from T722's empirical tuning.
+- [x] **T741** [P] Wrote `ai-docs/specs/07-celestial-background/results.md` — status by phase + commit pointers, all 6 SCs with code/test references, full per-suite test count table, deviations log (SUN_DISTANCE 1000 → 50 / cubemap bundle ~10.5 MB / Gradle compileMaterials refactor / Filament setImage(IntArray) deprecation / settings persistence deferred / T722 hardware tuning deferred), and pending-hardware checklist (Milky Way recognizability, sun-bloom vs Moon-highlight separation, eclipse occlusion, settings toggle latency, 60 FPS, lifecycle resilience).
   - _Requirements: agent-runbook.md_
 
-- [ ] **T742** [P] Cross-reference notes in 02-mvp + 04 results
-  - 02-mvp `results.md` § References — add a forward-link to `07-celestial-background/results.md` as the spec that paid down "renderer's flat-black backdrop" (matching the pattern 03 used to forward-link from 01 / 02).
-  - 04-sun-control `results.md` § References — same forward-link; 07 reuses 04's `state.sunDirection` as its sun-billboard input.
-  - 01-app-shell `results.md` § Deviations / deferrals — strike through any "SettingsSheet placeholder" note if one exists; SettingsSheet finally gets real toggles in 07.
+- [x] **T742** [P] Cross-references landed across the predecessor specs. `02-mvp/results.md` § References — added a forward-link calling out 07 as the spec that paid down "renderer's flat-black backdrop" + reuses 02's bundled-PNG asset pattern for the cubemap. `04-sun-control/results.md` § References — added a forward-link noting that `state.sunDirection` (locked in 04) is the sun billboard's per-frame input. `01-app-shell/results.md` SC-004 row — added a 2026-04-30 update note that the SettingsSheet placeholder body finally got real toggles via 07's T730 (entry affordance + sequential stack contract still holds; "Coming soon" copy gone).
   - _Requirements: agent-runbook.md_
 
-- [ ] **T743** [P] Amend ADR-0004 with star attribution
-  - Add a paragraph mirroring ADR-0005's amendment style: § "Amendments" subsection (or a parallel attribution paragraph to the existing NASA SVS one). Date 2026-04-29; pointer back to this spec; ESO Milky Way Panorama by Serge Brunier (CC BY 4.0). The verbatim attribution string also lives in `AboutSheet.kt`.
+- [x] **T743** [P] ADR-0004 § "Attribution" amended with the ESO Brunier paragraph (CC BY 4.0, ESO logo carve-out) — landed alongside the bake in commit `510bc94`. Verbatim attribution string also lives in `AboutSheet.kt`'s "Star imagery" credits row.
   - _Requirements: FR-011_
 
 **Final Checkpoint**: all four user stories' acceptance criteria pass on real devices; stars + sun + bloom render together without artifacts; settings toggles update within one frame; ADR-0004 amended; `results.md` filed; cross-refs updated.

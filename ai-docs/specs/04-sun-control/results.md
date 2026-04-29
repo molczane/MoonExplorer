@@ -77,4 +77,5 @@ The spec is code-complete; everything below needs an on-device session to confir
 - [`../../research/selenographic-math-camera.md`](../../research/selenographic-math-camera.md) §6 — sun direction modes (a) joystick + (b) selenographic; preset table
 - [`../01-app-shell/results.md`](../01-app-shell/results.md) — predecessor results (`setLightingPreset` deferred-stub origin)
 - [`../03-sites-and-flyto/results.md`](../03-sites-and-flyto/results.md) — animation pattern (cubic ease-in-out + cancellable mid-animation) reused here
+- [`../07-celestial-background/results.md`](../07-celestial-background/results.md) — successor spec — `state.sunDirection` (locked here, animated by `setLightingPreset`) is the input the sun billboard reads each frame
 - Hand-off branch: `main` (Phase Final at this commit).

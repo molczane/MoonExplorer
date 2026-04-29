@@ -64,4 +64,5 @@ T145 record of what shipped, what's user-confirmed on hardware, and what's still
 - [`../../decisions/0009-spike-deviations.md`](../../decisions/0009-spike-deviations.md) — Phase 0 deviations resolved by this spec
 - [`../../decisions/0010-cdn-host-github-releases.md`](../../decisions/0010-cdn-host-github-releases.md) — HD CDN host
 - [`../../decisions/0011-android-hd-ktx2-deferred.md`](../../decisions/0011-android-hd-ktx2-deferred.md) — narrows the asset-format plan
+- [`../07-celestial-background/results.md`](../07-celestial-background/results.md) — successor spec — replaces the renderer's flat-black backdrop with a Milky Way Skybox + visible blooming sun. Reuses 02-mvp's bundled-PNG asset pattern for the 6 cubemap faces.
 - Hand-off branch: `main` (Phase 4 complete at `88ea510`).
