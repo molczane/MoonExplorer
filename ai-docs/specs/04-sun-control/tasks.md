@@ -44,20 +44,20 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T400+
 
 ## Phase 2: SunPanel UI
 
-- [ ] **T420** [US1] Implement `ui/SunJoystick.kt`
+- [x] **T420** [US1] Implement `ui/SunJoystick.kt` — 120-dp circular pad with a 28-dp draggable knob; gesture loop uses `awaitEachGesture` + `awaitFirstDown` so the knob jumps to the first touch position immediately (no drag-threshold lag from `detectDragGestures`). Knob centre travels in a disk of radius `(diskR − knobR)` so the knob's *edge* meets the outer ring at `|sunDirection| = 1`. Y-flipped to translate Compose's screen-down Y to our world-up Y. Emits raw disk-relative `(x, y)`; the screen wraps with `joystickToSunDir` for clamping.
   - `@Composable fun SunJoystick(sunDirection: Vec3, onDrag: (Float, Float) -> Unit, modifier: Modifier = Modifier)`.
   - 120-dp `Box` with `Modifier.size(120.dp)`. Render the disk as a `Canvas` (concentric circle for boundary + filled circle for the knob at `state-derived` position).
   - Knob render position: `IntOffset((sunDirection.x * radiusPx).toInt(), (-sunDirection.y * radiusPx).toInt())` — Y-flipped because Compose Y grows downward.
   - Drag via `Modifier.pointerInput(Unit) { detectDragGestures(onDrag = { change, _ -> ... }) }`. Convert pointer position → disk-relative `(x, y) ∈ [-1, 1]²` (normalize by `radiusPx`); clamp to disk; emit via `onDrag`.
   - _Requirements: FR-001, FR-002, FR-003_
 
-- [ ] **T421** [US2] Implement `ui/LightingPresetRow.kt`
+- [x] **T421** [US2] Implement `ui/LightingPresetRow.kt` — 2x2 grid of `FilledTonalButton`s (88×40 dp each) with labels "Full" / "Half" / "Apollo" / "New" mapped to `LightingPreset.Day / Terminator / HighContrast / Night`. Picked `FilledTonalButton` over `Button` for a softer dark-background-friendly look that matches the existing About / Settings sheet aesthetic.
   - `@Composable fun LightingPresetRow(onPresetTap: (LightingPreset) -> Unit, modifier: Modifier = Modifier)`.
   - 4 `Button`s in a `Column` (or `Row` — final orientation decided based on the layout in T422). Labels: "Full" / "Half" / "Apollo" / "New" → enum mapping per `plan.md` § "ui/LightingPresetRow.kt" `PRESET_LABELS`.
   - Each button: `Button(onClick = { onPresetTap(preset) }) { Text(label) }` with `Modifier.fillMaxWidth()` if vertical, `Modifier.padding(...)` for spacing.
   - _Requirements: FR-005_
 
-- [ ] **T422** [US1, US2] Implement `ui/SunPanel.kt` — composes `SunJoystick` + `LightingPresetRow`
+- [x] **T422** [US1, US2] Implement `ui/SunPanel.kt` — composes `SunJoystick` + `LightingPresetRow` in a `Row` with `Arrangement.spacedBy(16.dp)`, vertically centred. Joystick on the left, 2x2 preset grid on the right. ~120 dp tall × ~300 dp wide; fits comfortably at BottomCenter without consuming the full screen width.
   - `@Composable fun SunPanel(sunDirection: Vec3, onJoystickDrag: (Float, Float) -> Unit, onPresetTap: (LightingPreset) -> Unit, modifier: Modifier = Modifier)`.
   - Layout: `Row` with `SunJoystick` on the left and `LightingPresetRow` on the right. Total height ~140 dp.
   - Pass `sunDirection`, `onJoystickDrag` through to `SunJoystick`. Pass `onPresetTap` through to `LightingPresetRow`.
