@@ -13,35 +13,22 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T500+
 
 ## Phase 1: Theme foundation
 
-- [ ] **T501** [P] [US1] Implement `ui/theme/MoonExplorerColorScheme.kt`
-  - `object MoonColors` exposes named colour constants per `plan.md` § "MoonExplorerColorScheme.kt": `SpaceBlack`, `DeepBlueGray`, `MoonBlue`, `SunAmber`, `Bone`, etc.
-  - `fun moonExplorerDarkScheme(): ColorScheme` returns a Material 3 `darkColorScheme(...)` populated with the spec'd values across all relevant slots (primary, secondary, background, surface, surface containers, scrim, outline, etc.).
-  - `surfaceContainer` / `surfaceContainerHigh` / `surfaceContainerHighest` all map to `DeepBlueGray` so `ModalBottomSheet` picks the right colour by default.
+- [x] **T501** [P] [US1] `ui/theme/MoonExplorerColorScheme.kt` shipped — `object MoonColors` exposes 9 named constants (`SpaceBlack` / `DeepBlueGray` / `MoonBlue` / `MoonBlueDim` / `SunAmber` / `SunAmberDim` / `Bone` / `BoneDim` / `Outline` / `Scrim`); `moonExplorerDarkScheme()` populates `darkColorScheme(...)` across primary / secondary / background / surface / `surfaceContainer*` / scrim / outline. WCAG AA spot-check baked into the kdoc (MoonBlue on SpaceBlack ≈ 7.4:1; SunAmber on SpaceBlack ≈ 10.6:1).
   - _Requirements: FR-003_
 
-- [ ] **T502** [P] [US1] Implement `ui/theme/MoonExplorerTypography.kt`
-  - `fun moonExplorerTypography(): Typography` starts from Material 3's `Typography()` defaults and overrides four styles per `plan.md` § "Typography": `headlineSmall` (sheet titles), `titleMedium` (section headers), `bodyMedium` (body), `labelLarge` (button labels).
-  - System fonts only — no custom typeface in v1.
+- [x] **T502** [P] [US1] `ui/theme/MoonExplorerTypography.kt` shipped — `moonExplorerTypography()` starts from Material 3's `Typography()` defaults and overrides 4 styles: `headlineSmall` (SemiBold, 0 letter-spacing), `titleMedium` (Medium weight), `bodyMedium` (22 sp line-height), `labelLarge` (SemiBold, 0.5 sp letter-spacing). System fonts only.
   - _Requirements: FR-004_
 
-- [ ] **T503** [P] [US1] Implement `ui/theme/MoonExplorerShapes.kt`
-  - `fun moonExplorerShapes(): Shapes` with `extraSmall = 4.dp`, `small = 8.dp`, `medium = 16.dp`, `large = 24.dp`, `extraLarge = 32.dp` (top corners only — `bottomStart = bottomEnd = 0.dp` for sheets).
+- [x] **T503** [P] [US1] `ui/theme/MoonExplorerShapes.kt` shipped — `moonExplorerShapes()` returns `Shapes(extraSmall = 4 dp, small = 8 dp, medium = 16 dp, large = 24 dp, extraLarge = top-32-dp/bottom-0)`. Sheet-friendly extraLarge (rounded top, flat bottom).
   - _Requirements: FR-005_
 
-- [ ] **T504** [US1] Implement `ui/theme/MoonExplorerTheme.kt`
-  - `@Composable fun MoonExplorerTheme(content: @Composable () -> Unit)` wraps `MaterialTheme(colorScheme = moonExplorerDarkScheme(), typography = moonExplorerTypography(), shapes = moonExplorerShapes()) { content() }`.
+- [x] **T504** [US1] `ui/theme/MoonExplorerTheme.kt` shipped — `@Composable fun MoonExplorerTheme(content)` wraps `MaterialTheme(colorScheme = moonExplorerDarkScheme(), typography = moonExplorerTypography(), shapes = moonExplorerShapes()) { content() }`. Pure pass-through.
   - _Requirements: FR-001_
 
-- [ ] **T505** [P] [US1] `commonTest` — `MoonExplorerColorSchemeTest` (5 cases)
-  - `dark_primaryIsCoolBlue`: `moonExplorerDarkScheme().primary == MoonColors.MoonBlue`.
-  - `dark_secondaryIsWarmAmber`: same shape for `.secondary == SunAmber`.
-  - `dark_backgroundIsSpaceBlack`: `.background == Color.Black`.
-  - `dark_surfaceContainerStaysSurface`: `surfaceContainer == surfaceContainerHigh == surfaceContainerHighest == surface == DeepBlueGray`.
-  - `MoonColors_primaryPassesWcagAa`: contrast-ratio of `MoonBlue` on `SpaceBlack` ≥ 4.5:1.
+- [x] **T505** [P] [US1] `commonTest` — `MoonExplorerColorSchemeTest` shipped with 5 cases: `dark_primaryIsCoolBlue`, `dark_secondaryIsWarmAmber`, `dark_backgroundIsSpaceBlack`, `dark_surfaceContainerStaysSurface` (verifies `surfaceContainer / High / Highest` all equal `surface`), `moonColors_passWcagAa` (computes WCAG 2.1 contrast ratio for primary + secondary on background; both pass the 4.5:1 AA threshold). Suite count: **108 green** on Android JVM + iOS sim (was 103 → +5).
   - _Requirements: SC-006_
 
-- [ ] **T506** [US1] Wrap `MoonExplorerScreen`'s root `Box` in `MoonExplorerTheme { ... }`
-  - The new wrap is the outermost composable in `MoonExplorerScreen`; everything inside inherits via Compose's `CompositionLocal`.
+- [x] **T506** [US1] `MoonExplorerScreen` wrapped in `MoonExplorerTheme { ... }` — refactored as a thin outer composable that wraps `MoonExplorerScreenContent(storage, modifier)` (the original body). Theme propagates via `CompositionLocal` to every descendant; existing `MaterialTheme.colorScheme.*` reads in `MarkerOverlay` (highlighted-marker accent), `SettingsSheet`'s `Switch`, etc., now resolve to the new palette automatically.
   - _Requirements: FR-002_
 
 **Checkpoint**: launching the app on simulator shows the same content as before but with a new palette — the existing `MaterialTheme.colorScheme.*` references in `MarkerOverlay`, `LightingPresetRow`, `SettingsSheet`'s switches, etc. now resolve to the new colours automatically.

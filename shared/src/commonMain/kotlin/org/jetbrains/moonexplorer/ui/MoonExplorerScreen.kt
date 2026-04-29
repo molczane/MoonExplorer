@@ -39,6 +39,7 @@ import org.jetbrains.moonexplorer.domain.SiteCatalog
 import org.jetbrains.moonexplorer.domain.joystickToSunDir
 import org.jetbrains.moonexplorer.render.MoonViewport
 import org.jetbrains.moonexplorer.state.MoonViewModel
+import org.jetbrains.moonexplorer.ui.theme.MoonExplorerTheme
 // MarkerOverlay is in the same package — no import needed.
 
 /**
@@ -59,6 +60,21 @@ import org.jetbrains.moonexplorer.state.MoonViewModel
  */
 @Composable
 fun MoonExplorerScreen(
+    storage: StorageDir,
+    modifier: Modifier = Modifier,
+) {
+    MoonExplorerTheme {
+        MoonExplorerScreenContent(storage = storage, modifier = modifier)
+    }
+}
+
+/**
+ * Inner content split out from [MoonExplorerScreen] so the [MoonExplorerTheme] wrapper is
+ * a pure pass-through composable — every descendant reads `MaterialTheme.colorScheme.*` etc.
+ * already wired by the wrapper. T506 / 05-modern-theme.
+ */
+@Composable
+private fun MoonExplorerScreenContent(
     storage: StorageDir,
     modifier: Modifier = Modifier,
 ) {
