@@ -58,15 +58,13 @@ class MoonViewModel(initial: MoonRenderState = MoonRenderState()) {
         _state.update { it.copy(highlightedSiteId = id) }
     }
 
-    /** Phase 6 (T060) debug-only — flips the bound albedo between primary (0) and alt (1). */
-    fun toggleAlbedoVariant() {
-        _state.update { it.copy(albedoVariant = if (it.albedoVariant == 0) 1 else 0) }
-    }
-
-    /** Explicit setter; companion to [toggleAlbedoVariant]. */
-    fun setAlbedoVariant(variant: Int) {
-        if (variant != 0 && variant != 1) return
-        _state.update { it.copy(albedoVariant = variant) }
+    /**
+     * Pushes a new [TextureSet] for the renderer to bind on its next frame (T114). The
+     * loader (T117) drives this through `Placeholder → Bundled2K → Hd8K` over the
+     * lifetime of a launch.
+     */
+    fun setTextureSet(textureSet: TextureSet) {
+        _state.update { it.copy(textureSet = textureSet) }
     }
 
     companion object {

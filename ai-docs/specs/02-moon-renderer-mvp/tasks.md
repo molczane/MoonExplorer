@@ -74,29 +74,29 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
 
 ## Phase 2: KTX2 loading (replaces PNG path)
 
-- [ ] **T110** [P] [US1] Implement `assets/AssetManifest.kt` in commonMain
+- [x] **T110** [P] [US1] Implement `assets/AssetManifest.kt` in commonMain
   - `@Serializable data class AssetManifest(version: String, albedo: AssetEntry, normal: AssetEntry)` + `AssetEntry(url, sha256, sizeBytes, width, height)`.
   - Companion `parse(json: String): AssetManifest` using `Json { ignoreUnknownKeys = true }`.
   - _Requirements: FR-001, FR-009_
 
-- [ ] **T111** [P] [US1] Implement `assets/StorageDir.kt` (expect) + actuals
+- [x] **T111** [P] [US1] Implement `assets/StorageDir.kt` (expect) + actuals
   - `expect class StorageDir { suspend fun read(name: String): ByteArray? ; suspend fun writeAtomically(name: String, bytes: ByteArray) ; fun exists(name: String): Boolean ; fun delete(name: String) }`.
   - Android actual backed by `Context.filesDir`; iOS actual backed by `NSFileManager` `documentDirectory`.
   - _Requirements: FR-002, FR-004_
 
-- [ ] **T112** [P] [US1] Implement `assets/Sha256.kt` (expect) + actuals
+- [x] **T112** [P] [US1] Implement `assets/Sha256.kt` (expect) + actuals
   - `expect fun sha256(bytes: ByteArray): String`.
   - Android: `MessageDigest.getInstance("SHA-256")`.
   - iOS: `CC_SHA256` from `<CommonCrypto/CommonDigest.h>` via cinterop.
   - _Requirements: FR-004_
 
-- [ ] **T113** [US1] Implement `assets/AssetCache.kt`
+- [x] **T113** [US1] Implement `assets/AssetCache.kt`
   - `class AssetCache(private val storage: StorageDir, private val http: HttpClient)`.
   - `suspend fun lookupOrFetch(entry: AssetEntry): ByteArray`: cache hit + sha256 valid → return; mismatch → discard + fetch; cache miss → fetch → atomic write → verify.
   - `suspend fun invalidate(version: String)`: delete cached files when manifest version changes.
   - _Requirements: FR-002, FR-004, FR-009_
 
-- [ ] **T114** [US1] Modify `state/MoonRenderState.kt`
+- [x] **T114** [US1] Modify `state/MoonRenderState.kt`
   - Replace `albedoVariant: Int` with `textureSet: TextureSet = TextureSet.Placeholder`.
   - Define `sealed class TextureSet { Placeholder; Bundled2K(...); Hd8K(...) }`.
   - Update `MoonViewModel` to drop `toggleAlbedoVariant` / `setAlbedoVariant`, add `setTextureSet(TextureSet)`.

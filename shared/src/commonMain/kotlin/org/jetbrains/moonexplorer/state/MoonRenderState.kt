@@ -18,10 +18,9 @@ data class MoonRenderState(
     val moonRotationRad: Float = 0f,
     val highlightedSiteId: String? = null,
     /**
-     * Phase 0 spike asset-swap toggle (Phase 6, T060). 0 = primary albedo
-     * (rust/green/blue/red quadrants), 1 = alt albedo (CMYW). Useful to
-     * confirm the runtime texture-swap path works end-to-end before real
-     * NASA assets land in `02-moon-renderer-mvp`.
+     * Currently-bound texture pair (T114). Renderer rebinds the material's samplers when
+     * this changes — the same per-frame state path that delivers camera + sun. Placeholder
+     * → Bundled2K → Hd8K is the typical lifecycle (FR-001, FR-003).
      */
-    val albedoVariant: Int = 0,
+    val textureSet: TextureSet = TextureSet.Placeholder,
 )

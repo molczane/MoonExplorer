@@ -35,9 +35,8 @@ actual fun MoonViewport(state: MoonRenderState, modifier: Modifier) {
                     "by the iOS app — Filament renderer will not start. " +
                     "Wire MoonRendererProvider.shared.{factory, applyCamera, " +
                     "applySunDirection, applyMoonRotation, applyAssets, " +
-                    "applyAltAlbedo, applyAlbedoVariant, dispose} in " +
-                    "iOSApp.init(). See ADR-0002 §\"Bridge pattern\" and " +
-                    "iosApp/README.md.",
+                    "dispose} in iOSApp.init(). See ADR-0002 §\"Bridge " +
+                    "pattern\" and iosApp/README.md.",
             )
         }
     }
@@ -48,7 +47,6 @@ actual fun MoonViewport(state: MoonRenderState, modifier: Modifier) {
             MoonRendererProvider.applyCamera(state.cameraYawRad, state.cameraPitchRad, state.cameraDistance)
             MoonRendererProvider.applySunDirection(state.sunDirection.x, state.sunDirection.y, state.sunDirection.z)
             MoonRendererProvider.applyMoonRotation(state.moonRotationRad)
-            MoonRendererProvider.applyAlbedoVariant(state.albedoVariant)
         },
         onRelease = { MoonRendererProvider.dispose() },
         modifier = modifier,
