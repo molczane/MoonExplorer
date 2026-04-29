@@ -51,31 +51,31 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T700+
 
 ## Phase 2: Sun disc
 
-- [ ] **T710** [US2] Author `materials/sun.mat`
+- [x] **T710** [US2] Authored `shared/src/commonMain/composeResources/files/materials/sun.mat` — unlit emissive disc, `masked` blending, single `intensity: float` parameter. Fragment shader checks `length(uv - 0.5)` against the disc radius (0.5) and uses a `1 - smoothstep(0.495, 0.5, r)` alpha falloff so the disc has a soft anti-aliased edge that survives bloom kernel blur. `requires : [position, uv0]` only — no tangents (unlit shading doesn't need them).
   - Unlit shading model, single `intensity: float` parameter, fragment outputs `baseColor = vec4(intensity, intensity, intensity, 1.0)`.
   - Source per `plan.md` § "Sun material".
   - _Requirements: FR-003_
 
-- [ ] **T711** [US2] Wire `sun.mat` into `compileMaterials` Gradle task
+- [x] **T711** [US2] Refactored `compileMaterials` from a single hardcoded `Exec` task to a `registerMaterialCompile(name)` helper that registers one `Exec` task per `.mat` source. Added `compileMoonMaterial` + `compileSunMaterial`; `compileMaterials` is now an umbrella that depends on both. The downstream Compose-Resources packaging dependency block in `tasks.matching` now lists both per-material tasks directly (Gradle's strict-input-output detector wants direct dependencies on the producer tasks; the umbrella alone wasn't enough). Confirmed `sun.filamat` (52 KB) lands next to `moon.filamat` (734 KB) in `composeResources/files/materials/`.
   - The task already compiles the Moon material; check whether it globs `materials/*.mat` (zero-line change) or names files explicitly (one-line addition).
   - Confirm `sun.filamat` lands in `composeResources/files/` next to the Moon's `.filamat`.
   - _Requirements: FR-003_
 
-- [ ] **T712** [US2] [Android] Sun Renderable in `MoonHost.kt`
+- [x] **T712** [US2] [Android] Sun Renderable in `MoonHost.kt` — `sun.filamat` loaded synchronously alongside `moon.filamat` (matches existing pattern). 1×1 quad mesh built procedurally (4 vertices, FLOAT3 positions + FLOAT2 uv0, 6 ushort indices). MaterialInstance created with `intensity = SUN_EMISSIVE_INTENSITY = 5f`. Renderable entity attached to scene at init when `lastShowSun ≠ default true`; per-frame `applySunBillboard` flips attach/detach when state.showSun changes. Cached `sunTransformInstance` for the per-frame transform path. Tear-down extends the existing `destroy()` reverse-order chain.
   - Build a 1×1 quad mesh procedurally (4 verts, 2 tris). Load `sun.filamat` via `Material.Builder().payload(filamatBytes).build(engine)`. Create `MaterialInstance`; set `intensity = SUN_EMISSIVE_INTENSITY` (~5–10, tunable in T722). Build a `Renderable` Entity; cache the entity + transform manager instance.
   - Add to scene only when `state.showSun = true` (mirror the skybox attach/detach pattern from T703).
   - _Requirements: FR-004, FR-006_
 
-- [ ] **T713** [US2] [iOS] Sun Renderable in `MoonRenderer.mm`
+- [x] **T713** [US2] [iOS] Sun Renderable spans the full bridge — `MoonRenderer.h` declares `loadSunMaterial:` (one-shot) + `setShowSun:` (per-recomp). `MoonRenderer.mm` implements both: loadSunMaterial: builds Material → MaterialInstance with intensity=5 → 1×1 quad mesh (interleaved POSITION + UV0 in one vertex buffer) → Renderable, attaches to scene if `_showSun`. Per-recomp setShowSun: idempotent attach/detach. `MoonRendererProvider` gains `applySunMaterial` + `applyShowSun` closures. `MoonAssets.kt` gains `loadAndPushSunMaterial()`. `MoonViewport.ios.kt` calls `applyShowSun(state.showSun)` per recomp. `MoonRendererViewController.swift` adds forwarders + a `pendingSunMaterial` buffer for pre-viewDidLoad pushes. `iOSApp.swift` wires the two new closures + a startup Task for `loadAndPushSunMaterial()`. Constants (`kSunDistance` etc.) defined in MoonRenderer.mm's anonymous namespace mirror Android's companion-object values.
   - Same in Obj-C++: load `sun.filamat`, build quad mesh, build Renderable, scene attach/detach.
   - _Requirements: FR-004, FR-006_
 
-- [ ] **T714** [US2] [P] Per-frame sun transform — both platforms
-  - Read `state.sunDirection`. Compute `sunPos = sunDir · SUN_DISTANCE` (1000.0). Compute billboard rotation via `lookAt(sunPos, cameraPos, Vec3.UP)`. Compute scale: `2 * SUN_DISTANCE * tan(SUN_ANGULAR_DIAMETER_RAD / 2) ≈ 9.1` units. Apply via `transformManager.setTransform(sunInstance, mat)`.
-  - Constants live next to existing renderer constants — `SUN_DISTANCE: Float = 1000f`, `SUN_ANGULAR_DIAMETER_RAD: Float = 0.0091f`, `SUN_EMISSIVE_INTENSITY: Float = 8f` (placeholder; T722 tunes).
+- [x] **T714** [US2] [P] Per-frame sun billboard transform on both platforms. **Adjusted SUN_DISTANCE from plan's 1000 → 50** because both renderers' `FAR_PLANE = 100`; sun at 1000 would clip. With camera `MAX_DIST = 20`, worst-case sun-to-camera distance is 70 — comfortably inside far plane. `SUN_SCALE ≈ 0.455` units (= 2·50·tan(0.0091/2)) preserves the ~0.52° apparent angular diameter from the camera. Billboard math: `forward = camPos - sunPos` (normalized), `right = worldUp × forward`, `up = forward × right`; matrix is column-major per Filament's TransformManager (right-axis * s, up-axis * s, forward-axis, sunPos). Pole singularity (forward parallel to worldUp) handled by falling back to world +X for right.
+  - Read `state.sunDirection`. Compute `sunPos = sunDir · SUN_DISTANCE` (~~1000.0~~ 50.0). Compute billboard rotation via `lookAt(sunPos, cameraPos, Vec3.UP)`. Compute scale: `2 * SUN_DISTANCE * tan(SUN_ANGULAR_DIAMETER_RAD / 2) ≈ ~~9.1~~ 0.455` units. Apply via `transformManager.setTransform(sunInstance, mat)`.
+  - Constants live next to existing renderer constants — `SUN_DISTANCE: Float = ~~1000f~~ 50f`, `SUN_ANGULAR_DIAMETER_RAD: Float = 0.0091f`, `SUN_EMISSIVE_INTENSITY: Float = ~~8f~~ 5f` (placeholder; T722 tunes).
   - _Requirements: FR-005_
 
-- [ ] **T715** [US2] `MoonRenderState.showSun` + `MoonViewModel.setShowSun`
+- [x] **T715** [US2] `MoonRenderState.showSun: Boolean = true` + `MoonViewModel.setShowSun(Boolean)` shipped; `MoonViewModelTest` extended with `setShowSun_defaultIsTrue` + `setShowSun_togglesState` (+2 cases). Suite count: **103 green** on Android JVM + iOS sim (was 101 after Phase 1 → +2).
   - Add `showSun: Boolean = true` to `MoonRenderState`.
   - Add `fun setShowSun(value: Boolean) { _state.update { it.copy(showSun = value) } }` to `MoonViewModel`.
   - _Requirements: FR-006, FR-010 (partial)_

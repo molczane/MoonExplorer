@@ -38,3 +38,14 @@ suspend fun loadAndPushStarsCubemap() {
     val nz = Res.readBytes("files/stars/nz.png")
     MoonRendererProvider.applyStarsCubemap(px, nx, py, ny, pz, nz)
 }
+
+/**
+ * iOS-only one-shot at app startup: read the bundled `sun.filamat` material payload from
+ * compose resources and push it through [MoonRendererProvider.applySunMaterial]. Mirrors
+ * [loadAndPushMaterial]'s pattern. T713 / 07-celestial-background.
+ */
+@OptIn(ExperimentalResourceApi::class)
+suspend fun loadAndPushSunMaterial() {
+    val material = Res.readBytes("files/materials/sun.filamat")
+    MoonRendererProvider.applySunMaterial(material)
+}

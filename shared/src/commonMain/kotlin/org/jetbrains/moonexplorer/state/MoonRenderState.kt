@@ -30,4 +30,11 @@ data class MoonRenderState(
      * `scene->setSkybox(nullptr)`).
      */
     val showStars: Boolean = true,
+    /**
+     * Whether the sun billboard is attached to the scene. T715 / 07-celestial-background.
+     * Read by both renderer hosts per frame; flipping toggles `scene.add/remove(sunEntity)`.
+     * Phase 3 (bloom) will additionally key `BloomOptions.enabled` off this flag so the
+     * post-FX cost is paid only when there's a bright pixel to bloom.
+     */
+    val showSun: Boolean = true,
 )

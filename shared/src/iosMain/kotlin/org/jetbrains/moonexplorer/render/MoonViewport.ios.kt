@@ -61,6 +61,7 @@ actual fun MoonViewport(state: MoonRenderState, modifier: Modifier) {
             MoonRendererProvider.applySunDirection(state.sunDirection.x, state.sunDirection.y, state.sunDirection.z)
             MoonRendererProvider.applyMoonRotation(state.moonRotationRad)
             MoonRendererProvider.applyShowStars(state.showStars)
+            MoonRendererProvider.applyShowSun(state.showSun)
         },
         onRelease = { MoonRendererProvider.dispose() },
         modifier = modifier,

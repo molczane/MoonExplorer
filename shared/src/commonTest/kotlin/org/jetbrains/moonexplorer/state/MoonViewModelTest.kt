@@ -128,6 +128,23 @@ class MoonViewModelTest {
         assertTrue(vm.state.value.showStars, "after setShowStars(true), state.showStars should be true")
     }
 
+    // ---- T715 / 07-celestial-background: setShowSun ----
+
+    @Test
+    fun setShowSun_defaultIsTrue() {
+        val vm = MoonViewModel()
+        assertTrue(vm.state.value.showSun, "default showSun should be true")
+    }
+
+    @Test
+    fun setShowSun_togglesState() {
+        val vm = MoonViewModel()
+        vm.setShowSun(false)
+        assertFalse(vm.state.value.showSun, "after setShowSun(false), state.showSun should be false")
+        vm.setShowSun(true)
+        assertTrue(vm.state.value.showSun, "after setShowSun(true), state.showSun should be true")
+    }
+
     companion object {
         private const val VIEWPORT_H: Int = 1000
         private val FOV_Y: Float = (PI / 3).toFloat() // 60°

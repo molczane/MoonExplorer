@@ -61,6 +61,15 @@ NS_ASSUME_NONNULL_BEGIN
  * calls with the same value are no-ops.
  */
 - (void)setShowStars:(BOOL)show;
+/**
+ * One-shot at startup. Builds the sun's MaterialInstance, the 1x1 quad mesh,
+ * and the Renderable. Attaches to the scene if `showSun` is currently true.
+ * Pushed via `MoonRendererProvider.applySunMaterial` from
+ * `MoonAssets.loadAndPushSunMaterial()`. T713.
+ */
+- (void)loadSunMaterial:(NSData *)material;
+/** Toggle the sun billboard Renderable. T713. */
+- (void)setShowSun:(BOOL)show;
 - (void)resize:(CGSize)drawableSize;
 - (void)pause;
 - (void)resume;

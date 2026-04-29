@@ -48,6 +48,14 @@ object MoonRendererProvider {
     ) -> Unit = { _, _, _, _, _, _ -> }
     /** Per-recomposition push of `state.showStars`. T704 / 07-celestial-background. */
     var applyShowStars: (showStars: Boolean) -> Unit = { _ -> }
+    /**
+     * One-shot at startup. Compiled `sun.filamat` payload — kicks off the sun
+     * MaterialInstance + 1×1 quad mesh + Renderable build on the iOS side.
+     * T713 / 07-celestial-background.
+     */
+    var applySunMaterial: (material: ByteArray) -> Unit = { _ -> }
+    /** Per-recomposition push of `state.showSun`. T713 / 07-celestial-background. */
+    var applyShowSun: (showSun: Boolean) -> Unit = { _ -> }
     var dispose: () -> Unit = {}
 
     /**

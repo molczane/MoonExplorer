@@ -53,6 +53,12 @@ struct iOSApp: App {
         provider.applyShowStars = { show in
             renderer.setShowStars(show.boolValue)
         }
+        provider.applySunMaterial = { material in
+            renderer.loadSunMaterial(material: material.toData())
+        }
+        provider.applyShowSun = { show in
+            renderer.setShowSun(show.boolValue)
+        }
         provider.dispose = { renderer.tearDown() }
 
         // Pre-fetch the bundled .filamat material via Compose Resources. Texture loading is
@@ -71,6 +77,15 @@ struct iOSApp: App {
                 try await MoonAssetsKt.loadAndPushStarsCubemap()
             } catch {
                 print("loadAndPushStarsCubemap failed: \(error)")
+            }
+        }
+        // T713 — pre-fetch sun.filamat. Mirrors loadAndPushMaterial; the renderer builds
+        // the sun's MaterialInstance + quad mesh + Renderable + scene attach on receive.
+        Task {
+            do {
+                try await MoonAssetsKt.loadAndPushSunMaterial()
+            } catch {
+                print("loadAndPushSunMaterial failed: \(error)")
             }
         }
     }

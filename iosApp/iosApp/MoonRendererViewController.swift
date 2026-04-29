@@ -32,6 +32,8 @@ final class MoonRendererViewController: UIViewController {
     private var pendingStarsNy: Data?
     private var pendingStarsPz: Data?
     private var pendingStarsNz: Data?
+    // T713 — sun material one-shot pending bytes.
+    private var pendingSunMaterial: Data?
 
     override func loadView() {
         let v = MoonRendererView(frame: .zero)
@@ -68,6 +70,10 @@ final class MoonRendererViewController: UIViewController {
             pendingStarsPx = nil; pendingStarsNx = nil
             pendingStarsPy = nil; pendingStarsNy = nil
             pendingStarsPz = nil; pendingStarsNz = nil
+        }
+        if let m = pendingSunMaterial {
+            r.loadSunMaterial(m)
+            pendingSunMaterial = nil
         }
     }
 
@@ -130,6 +136,20 @@ final class MoonRendererViewController: UIViewController {
 
     @objc func setShowStars(_ show: Bool) {
         renderer?.setShowStars(show)
+    }
+
+    // T713 / 07-celestial-background — sun material one-shot + per-recomp toggle.
+
+    @objc func loadSunMaterial(material: Data) {
+        if let r = renderer {
+            r.loadSunMaterial(material)
+        } else {
+            pendingSunMaterial = material
+        }
+    }
+
+    @objc func setShowSun(_ show: Bool) {
+        renderer?.setShowSun(show)
     }
 
     @objc func tearDown() {

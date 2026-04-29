@@ -96,6 +96,18 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     private val starsSkybox: Skybox
     private var lastShowStars: Boolean = false  // init attaches if default true
 
+    // T712 + T714 / 07-celestial-background — sun billboard. Quad mesh + sun.filamat
+    // unlit-emissive material. Per-frame transform from state.sunDirection (position)
+    // + camera position (billboard rotation). Attached / detached from the scene based
+    // on state.showSun, mirroring the lastShowStars dedup.
+    private val sunMaterial: Material
+    private val sunMaterialInstance: MaterialInstance
+    private val sunVertexBuffer: VertexBuffer
+    private val sunIndexBuffer: IndexBuffer
+    private val sunBillboardEntity: Int
+    private var sunTransformInstance: Int = 0
+    private var lastShowSun: Boolean = false  // init attaches if default true
+
     // Last-applied texture set for the per-frame `applyTextureSet` rebind path.
     // Reference identity: equality on TextureSet's data classes uses ByteArray identity, so a
     // new ByteArray (always allocated fresh by the loader on each push) triggers a real rebind.
@@ -121,6 +133,7 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             applyMoonRotation(state)
             applyTextureSet(state)
             applyShowStars(state)
+            applySunBillboard(state)
 
             if (renderer.beginFrame(sc, frameTimeNanos)) {
                 renderer.render(view)
@@ -188,6 +201,32 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         starsSkybox = Skybox.Builder()
             .environment(starsCubemap)
             .build(engine)
+
+        // --- 3.6. Sun billboard (T712) -----------------------------------------------
+        // Loaded synchronously alongside the moon material (~50 KB sun.filamat).
+        val sunMatBytes = runBlocking { Res.readBytes(SUN_MATERIAL_PATH) }
+        sunMaterial = Material.Builder()
+            .payload(ByteBuffer.wrap(sunMatBytes), sunMatBytes.size)
+            .build(engine)
+        sunMaterialInstance = sunMaterial.createInstance().apply {
+            setParameter("intensity", SUN_EMISSIVE_INTENSITY)
+        }
+        val sunMesh = buildSunQuadMesh(engine)
+        sunVertexBuffer = sunMesh.first
+        sunIndexBuffer = sunMesh.second
+        sunBillboardEntity = EntityManager.get().create()
+        RenderableManager.Builder(1)
+            .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, sunVertexBuffer, sunIndexBuffer, 0, 6)
+            .material(0, sunMaterialInstance)
+            // Bounds in *unscaled* local space (quad spans ±0.5 in XY at z=0). The
+            // per-frame transform scales to ~0.455 world units; cull bounds expand
+            // accordingly via the transform's scale, no manual fix-up needed.
+            .boundingBox(Box(0f, 0f, 0f, 0.5f, 0.5f, 0.001f))
+            .culling(true)
+            .receiveShadows(false)
+            .castShadows(false)
+            .build(engine, sunBillboardEntity)
+        sunTransformInstance = engine.transformManager.getInstance(sunBillboardEntity)
 
         // --- 4. Sun (directional light) ----------------------------------------------
         lightEntity = EntityManager.get().create()
@@ -335,6 +374,74 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         lastShowStars = state.showStars
     }
 
+    /**
+     * Update the sun billboard's attach state + per-frame transform. T712 + T714 /
+     * 07-celestial-background. Skips transform recomputation when the sun is hidden
+     * (no point burning trig ops on an off-scene entity).
+     */
+    private fun applySunBillboard(state: MoonRenderState) {
+        if (state.showSun != lastShowSun) {
+            if (state.showSun) {
+                scene.addEntity(sunBillboardEntity)
+            } else {
+                scene.removeEntity(sunBillboardEntity)
+            }
+            lastShowSun = state.showSun
+        }
+        if (!state.showSun || sunTransformInstance == 0) return
+
+        // Sun position in world space. SUN_DISTANCE = 50 sits comfortably inside
+        // FAR_PLANE = 100 (camera at MAX_DIST = 20 → worst-case sun-to-camera = 70).
+        val sunPosX = state.sunDirection.x * SUN_DISTANCE
+        val sunPosY = state.sunDirection.y * SUN_DISTANCE
+        val sunPosZ = state.sunDirection.z * SUN_DISTANCE
+
+        // Camera position from the orbit (yaw, pitch, distance). Cheap; recomputed
+        // here rather than threaded from applyCamera since it's a single call.
+        val camPos = cameraPosition(state.cameraYawRad, state.cameraPitchRad, state.cameraDistance)
+
+        // Billboard frame: forward = toward the camera so the quad faces the viewer.
+        var fx = camPos.x - sunPosX
+        var fy = camPos.y - sunPosY
+        var fz = camPos.z - sunPosZ
+        val fLen = kotlin.math.sqrt(fx * fx + fy * fy + fz * fz)
+        if (fLen < 1e-6f) return
+        fx /= fLen; fy /= fLen; fz /= fLen
+
+        // right = worldUp × forward. cross((0,1,0), forward) = (forward.z, 0, -forward.x).
+        var rx = fz
+        var ry = 0f
+        var rz = -fx
+        val rLenSq = rx * rx + ry * ry + rz * rz
+        if (rLenSq < 1e-6f) {
+            // forward is parallel to worldUp (sun directly overhead in world frame);
+            // fall back to a fixed world-x axis for the right vector.
+            rx = 1f; ry = 0f; rz = 0f
+        } else {
+            val rLen = kotlin.math.sqrt(rLenSq)
+            rx /= rLen; ry /= rLen; rz /= rLen
+        }
+
+        // up = forward × right.
+        val ux = fy * rz - fz * ry
+        val uy = fz * rx - fx * rz
+        val uz = fx * ry - fy * rx
+
+        val s = SUN_SCALE
+        // Column-major 4x4 matrix per Filament's TransformManager convention. Columns:
+        //   0 = local +X (right) scaled by s
+        //   1 = local +Y (up)    scaled by s
+        //   2 = local +Z (forward; camera-facing) — quad has no depth, no scale needed
+        //   3 = world translation
+        val matrix = floatArrayOf(
+            rx * s, ry * s, rz * s, 0f,
+            ux * s, uy * s, uz * s, 0f,
+            fx,     fy,     fz,     0f,
+            sunPosX, sunPosY, sunPosZ, 1f,
+        )
+        engine.transformManager.setTransform(sunTransformInstance, matrix)
+    }
+
     private fun applyTextureSet(state: MoonRenderState) {
         val ts = state.textureSet
         if (ts === lastAppliedTextureSet) return
@@ -383,16 +490,23 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
 
         scene.removeEntity(renderableEntity)
         scene.removeEntity(lightEntity)
+        scene.removeEntity(sunBillboardEntity)
 
         engine.destroyEntity(renderableEntity)
         engine.destroyEntity(lightEntity)
+        engine.destroyEntity(sunBillboardEntity)
         EntityManager.get().destroy(renderableEntity)
         EntityManager.get().destroy(lightEntity)
+        EntityManager.get().destroy(sunBillboardEntity)
 
         engine.destroyVertexBuffer(vertexBuffer)
         engine.destroyIndexBuffer(indexBuffer)
+        engine.destroyVertexBuffer(sunVertexBuffer)
+        engine.destroyIndexBuffer(sunIndexBuffer)
         engine.destroyMaterialInstance(materialInstance)
         engine.destroyMaterial(material)
+        engine.destroyMaterialInstance(sunMaterialInstance)
+        engine.destroyMaterial(sunMaterial)
         engine.destroyTexture(albedoTexture)
         engine.destroyTexture(normalTexture)
         // Stars Skybox + its backing cubemap (T703). Detach from the scene
@@ -541,12 +655,84 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         const val FAR_PLANE = 100.0
 
         const val MATERIAL_PATH = "files/materials/moon.filamat"
+        const val SUN_MATERIAL_PATH = "files/materials/sun.filamat"
 
         /**
          * Filament's cubemap face order: [+X, -X, +Y, -Y, +Z, -Z]. The bundled
          * PNG filenames match this order so the loader iteration is mechanical.
          */
         val STARS_FACES = listOf("px", "nx", "py", "ny", "pz", "nz")
+
+        /**
+         * Sun billboard distance from world origin. Past `MAX_DIST = 20` so the sun
+         * is always behind anything camera-relevant (Moon's at the origin), inside
+         * `FAR_PLANE = 100` so the sun never clips. T714 / 07-celestial-background.
+         */
+        const val SUN_DISTANCE: Float = 50f
+
+        /** Real apparent angular diameter of the Sun from the Moon (~0.52°). */
+        const val SUN_ANGULAR_DIAMETER_RAD: Float = 0.0091f
+
+        /** World-space size of the quad: 2·D·tan(θ/2) at the spec'd distance/angle. */
+        val SUN_SCALE: Float =
+            2f * SUN_DISTANCE * kotlin.math.tan(SUN_ANGULAR_DIAMETER_RAD / 2f)
+
+        /**
+         * Material `intensity` uniform on the sun's MaterialInstance. ~5 in linear HDR
+         * exceeds Phase 3's bloom threshold while staying low enough that tonemapping
+         * doesn't over-clip into adjacent pixels. T722 will tune empirically.
+         */
+        const val SUN_EMISSIVE_INTENSITY: Float = 5f
+    }
+
+    /**
+     * Build a 1x1 quad mesh (4 verts, 2 tris) for the sun billboard. Two separate
+     * buffers: positions (FLOAT3) + uv0 (FLOAT2). Tangents are not required — sun.mat
+     * is unlit. T712 / 07-celestial-background.
+     *
+     * Quad layout (local coords): vertices at corners of a unit square in the XY
+     * plane (z = 0); after the billboard transform, +X = right, +Y = up, +Z = camera
+     * direction. CCW winding when viewed from +Z so backface culling keeps the front
+     * facing the camera.
+     */
+    private fun buildSunQuadMesh(engine: Engine): Pair<VertexBuffer, IndexBuffer> {
+        val positions = floatArrayOf(
+            -0.5f, -0.5f, 0f,   // v0 bottom-left
+             0.5f, -0.5f, 0f,   // v1 bottom-right
+             0.5f,  0.5f, 0f,   // v2 top-right
+            -0.5f,  0.5f, 0f,   // v3 top-left
+        )
+        val uvs = floatArrayOf(
+            0f, 0f,   // v0
+            1f, 0f,   // v1
+            1f, 1f,   // v2
+            0f, 1f,   // v3
+        )
+        val indices = shortArrayOf(0, 1, 2, 0, 2, 3)
+
+        val vb = VertexBuffer.Builder()
+            .vertexCount(4)
+            .bufferCount(2)
+            .attribute(VertexBuffer.VertexAttribute.POSITION, 0, VertexBuffer.AttributeType.FLOAT3)
+            .attribute(VertexBuffer.VertexAttribute.UV0, 1, VertexBuffer.AttributeType.FLOAT2)
+            .build(engine)
+
+        val posBuf = ByteBuffer.allocateDirect(positions.size * 4).order(ByteOrder.nativeOrder())
+        posBuf.asFloatBuffer().put(positions)
+        vb.setBufferAt(engine, 0, posBuf)
+
+        val uvBuf = ByteBuffer.allocateDirect(uvs.size * 4).order(ByteOrder.nativeOrder())
+        uvBuf.asFloatBuffer().put(uvs)
+        vb.setBufferAt(engine, 1, uvBuf)
+
+        val ib = IndexBuffer.Builder()
+            .indexCount(6)
+            .bufferType(IndexBuffer.Builder.IndexType.USHORT)
+            .build(engine)
+        val idxBuf = ByteBuffer.allocateDirect(indices.size * 2).order(ByteOrder.nativeOrder())
+        idxBuf.asShortBuffer().put(indices)
+        ib.setBuffer(engine, idxBuf)
+        return vb to ib
     }
 
     /**

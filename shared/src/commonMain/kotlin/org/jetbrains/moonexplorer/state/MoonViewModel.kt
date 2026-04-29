@@ -64,6 +64,15 @@ class MoonViewModel(initial: MoonRenderState = MoonRenderState()) {
         _state.update { it.copy(showStars = value) }
     }
 
+    /**
+     * Toggle the sun billboard. T715 / 07-celestial-background. Same direct-setter shape
+     * as [setShowStars]. Phase 3's bloom config also reads this flag so toggling sun-off
+     * stops paying the post-FX cost.
+     */
+    fun setShowSun(value: Boolean) {
+        _state.update { it.copy(showSun = value) }
+    }
+
     fun highlightLocation(id: String?) {
         _state.update { it.copy(highlightedSiteId = id) }
     }

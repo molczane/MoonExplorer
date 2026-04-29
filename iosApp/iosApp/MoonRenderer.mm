@@ -238,6 +238,14 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
              : ktxreader::Ktx2Reader::TransferFunction::LINEAR);
 }
 
+// T713 / 07-celestial-background — sun billboard constants. Mirror Android
+// MoonHost.kt's companion-object SUN_DISTANCE / SUN_ANGULAR_DIAMETER_RAD /
+// SUN_EMISSIVE_INTENSITY / SUN_SCALE.
+constexpr float kSunDistance = 50.0f;
+constexpr float kSunAngularDiameterRad = 0.0091f;
+constexpr float kSunScale = 2.0f * kSunDistance * 0.00455004f;  // tan(0.0091/2) precomputed
+constexpr float kSunEmissiveIntensity = 5.0f;
+
 } // namespace
 
 // --- ObjC wrapper ---
@@ -283,6 +291,16 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     BOOL _showStars;
     BOOL _starsAttached;  // tracks whether the Skybox is currently attached to the scene
 
+    // T713 / 07-celestial-background — sun billboard.
+    Material* _sunMaterial;
+    MaterialInstance* _sunMaterialInstance;
+    VertexBuffer* _sunVertexBuffer;
+    IndexBuffer* _sunIndexBuffer;
+    Entity _sunBillboardEntity;
+    BOOL _sunMaterialBuilt;
+    BOOL _showSun;
+    BOOL _sunBillboardAttached;
+
     // Cached state. **All access is on the main thread** — both the setters
     // (called from Compose's `update` lambda via the Kotlin `MoonRendererProvider`
     // closures) and the reader (`renderloop`, driven by CADisplayLink on the
@@ -311,6 +329,13 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     _skybox = nullptr;
     _showStars = YES;        // matches MoonRenderState default
     _starsAttached = NO;
+    _sunMaterial = nullptr;
+    _sunMaterialInstance = nullptr;
+    _sunVertexBuffer = nullptr;
+    _sunIndexBuffer = nullptr;
+    _sunMaterialBuilt = NO;
+    _showSun = YES;          // matches MoonRenderState default
+    _sunBillboardAttached = NO;
     _lastAlbedoPtr = nullptr;
     _lastAlbedoLen = 0;
     _lastNormalPtr = nullptr;
@@ -416,6 +441,17 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     // Stars Skybox + cubemap (T704). Detach first so the Scene doesn't dangle.
     if (_skybox)         { _scene->setSkybox(nullptr); _engine->destroy(_skybox); _skybox = nullptr; }
     if (_starsCubemap)   { _engine->destroy(_starsCubemap);   _starsCubemap   = nullptr; }
+    // Sun billboard (T713). Detach the entity, then destroy components in reverse order.
+    if (_sunBillboardEntity) {
+        _scene->remove(_sunBillboardEntity);
+        _engine->destroy(_sunBillboardEntity);
+        EntityManager::get().destroy(_sunBillboardEntity);
+        _sunBillboardEntity = Entity{};
+    }
+    if (_sunIndexBuffer)       { _engine->destroy(_sunIndexBuffer);       _sunIndexBuffer       = nullptr; }
+    if (_sunVertexBuffer)      { _engine->destroy(_sunVertexBuffer);      _sunVertexBuffer      = nullptr; }
+    if (_sunMaterialInstance)  { _engine->destroy(_sunMaterialInstance);  _sunMaterialInstance  = nullptr; }
+    if (_sunMaterial)          { _engine->destroy(_sunMaterial);          _sunMaterial          = nullptr; }
     if (_materialInstance) { _engine->destroy(_materialInstance); _materialInstance = nullptr; }
     if (_material)       { _engine->destroy(_material);       _material       = nullptr; }
     if (_view)           { _engine->destroy(_view);           _view           = nullptr; }
@@ -670,6 +706,86 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     }
 }
 
+- (void)loadSunMaterial:(NSData *)material {
+    // T713 / 07-celestial-background. Mirrors loadMaterial: but builds a 1x1 quad mesh
+    // (positions + uv0) instead of the moon sphere; the sun.mat shader is unlit and
+    // doesn't require tangents.
+    if (_engine == nullptr || material.length == 0) return;
+    if (_sunMaterialBuilt) return;
+
+    _sunMaterial = Material::Builder()
+        .package(material.bytes, material.length)
+        .build(*_engine);
+    if (!_sunMaterial) return;
+    _sunMaterialInstance = _sunMaterial->createInstance("sunInstance");
+    if (!_sunMaterialInstance) return;
+    _sunMaterialInstance->setParameter("intensity", kSunEmissiveIntensity);
+
+    struct SunVertex { float3 position; float2 uv; };
+    auto* verts = new std::vector<SunVertex>{
+        { {-0.5f, -0.5f, 0.0f}, {0.0f, 0.0f} },  // v0 bottom-left
+        { { 0.5f, -0.5f, 0.0f}, {1.0f, 0.0f} },  // v1 bottom-right
+        { { 0.5f,  0.5f, 0.0f}, {1.0f, 1.0f} },  // v2 top-right
+        { {-0.5f,  0.5f, 0.0f}, {0.0f, 1.0f} },  // v3 top-left
+    };
+    auto* idx = new std::vector<uint16_t>{ 0, 1, 2, 0, 2, 3 };
+    const uint32_t stride = (uint32_t)sizeof(SunVertex);
+
+    _sunVertexBuffer = VertexBuffer::Builder()
+        .vertexCount(4)
+        .bufferCount(1)
+        .attribute(VertexAttribute::POSITION, 0,
+                   VertexBuffer::AttributeType::FLOAT3,
+                   (uint32_t)offsetof(SunVertex, position), (uint8_t)stride)
+        .attribute(VertexAttribute::UV0, 0,
+                   VertexBuffer::AttributeType::FLOAT2,
+                   (uint32_t)offsetof(SunVertex, uv), (uint8_t)stride)
+        .build(*_engine);
+    _sunVertexBuffer->setBufferAt(*_engine, 0,
+        VertexBuffer::BufferDescriptor(verts->data(), verts->size() * stride,
+            [](void*, size_t, void* user) {
+                auto* v = static_cast<std::vector<SunVertex>*>(user);
+                delete v;
+            }, verts));
+
+    _sunIndexBuffer = IndexBuffer::Builder()
+        .indexCount(6)
+        .bufferType(IndexBuffer::IndexType::USHORT)
+        .build(*_engine);
+    _sunIndexBuffer->setBuffer(*_engine,
+        IndexBuffer::BufferDescriptor(idx->data(), idx->size() * sizeof(uint16_t),
+                                      &releaseStdVectorIndices, idx));
+
+    _sunBillboardEntity = EntityManager::get().create();
+    RenderableManager::Builder(1)
+        .boundingBox({{-0.5f, -0.5f, -0.001f}, {0.5f, 0.5f, 0.001f}})
+        .material(0, _sunMaterialInstance)
+        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES,
+                  _sunVertexBuffer, _sunIndexBuffer, 0, 6)
+        .culling(true)
+        .receiveShadows(false)
+        .castShadows(false)
+        .build(*_engine, _sunBillboardEntity);
+
+    _sunMaterialBuilt = YES;
+    if (_showSun) {
+        _scene->addEntity(_sunBillboardEntity);
+        _sunBillboardAttached = YES;
+    }
+}
+
+- (void)setShowSun:(BOOL)show {
+    _showSun = show;
+    if (_engine == nullptr || _scene == nullptr || !_sunMaterialBuilt) return;
+    if (show && !_sunBillboardAttached) {
+        _scene->addEntity(_sunBillboardEntity);
+        _sunBillboardAttached = YES;
+    } else if (!show && _sunBillboardAttached) {
+        _scene->remove(_sunBillboardEntity);
+        _sunBillboardAttached = NO;
+    }
+}
+
 - (void)renderloop {
     if (_engine == nullptr || !_running) return;
 
@@ -702,6 +818,57 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
         auto inst = lcm.getInstance(_sunEntity);
         if (inst) {
             lcm.setDirection(inst, { -_sunX, -_sunY, -_sunZ });
+        }
+    }
+
+    // T713 / 07-celestial-background — sun billboard transform. Mirrors Android
+    // MoonHost.applySunBillboard: position = sunDir·SUN_DISTANCE; rotation builds a
+    // basis from forward = camera-to-sun-inverse so the quad always faces the camera.
+    if (_sunMaterialBuilt && _showSun && _sunBillboardEntity) {
+        const float sx = _sunX * kSunDistance;
+        const float sy = _sunY * kSunDistance;
+        const float sz = _sunZ * kSunDistance;
+
+        // Camera position from the orbit; same math as the eye computed above.
+        const float3 camPos = {
+            (float)(distance * cp * std::sin(yaw)),
+            (float)(distance * std::sin(pitch)),
+            (float)(distance * cp * std::cos(yaw))
+        };
+
+        float fx = camPos.x - sx;
+        float fy = camPos.y - sy;
+        float fz = camPos.z - sz;
+        const float fLen = std::sqrt(fx * fx + fy * fy + fz * fz);
+        if (fLen > 1e-6f) {
+            fx /= fLen; fy /= fLen; fz /= fLen;
+
+            // right = worldUp(0,1,0) × forward = (forward.z, 0, -forward.x)
+            float rx = fz, ry = 0.0f, rz = -fx;
+            const float rLenSq = rx * rx + ry * ry + rz * rz;
+            if (rLenSq < 1e-6f) {
+                rx = 1.0f; ry = 0.0f; rz = 0.0f;
+            } else {
+                const float rLen = std::sqrt(rLenSq);
+                rx /= rLen; ry /= rLen; rz /= rLen;
+            }
+            // up = forward × right
+            const float ux = fy * rz - fz * ry;
+            const float uy = fz * rx - fx * rz;
+            const float uz = fx * ry - fy * rx;
+
+            const float s = kSunScale;
+            // Filament's TransformManager matrix is column-major. mat4f's element-wise
+            // ctor takes (col0, col1, col2, col3) where each col is a float4.
+            mat4f m{
+                float4{ rx * s, ry * s, rz * s, 0.0f },
+                float4{ ux * s, uy * s, uz * s, 0.0f },
+                float4{ fx,     fy,     fz,     0.0f },
+                float4{ sx,     sy,     sz,     1.0f },
+            };
+            auto& tcm = _engine->getTransformManager();
+            auto inst = tcm.getInstance(_sunBillboardEntity);
+            if (inst) tcm.setTransform(inst, m);
         }
     }
 

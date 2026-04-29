@@ -109,40 +109,61 @@ val downloadFilamentTools by tasks.registering {
     }
 }
 
-val compileMaterials by tasks.registering(Exec::class) {
-    description = "Compile Filament .mat materials to .filamat (-a all -p mobile)."
+// Per-material matc invocation. T711 / 07-celestial-background — refactored from
+// the original single-file moon-only task into a helper that registers one Exec
+// task per .mat source. Each invocation runs `matc -a all -p mobile`, writes the
+// .filamat artefact under build/generated/filamat/, and copies it next to the
+// source so it's bundled by Compose Resources packaging.
+fun registerMaterialCompile(materialName: String) =
+    tasks.register<Exec>("compile${materialName.replaceFirstChar { it.uppercase() }}Material") {
+        description = "Compile $materialName.mat to $materialName.filamat (-a all -p mobile)."
+        group = "filament"
+        dependsOn(downloadFilamentTools)
+
+        val srcFile = layout.projectDirectory
+            .file("src/commonMain/composeResources/files/materials/$materialName.mat").asFile
+        val outFile = layout.buildDirectory
+            .file("generated/filamat/$materialName.filamat").get().asFile
+        val resourceCopy = layout.projectDirectory
+            .file("src/commonMain/composeResources/files/materials/$materialName.filamat").asFile
+        val matcExec = matcBinaryFile
+
+        onlyIf { srcFile.exists() }
+        inputs.file(srcFile)
+        outputs.files(outFile, resourceCopy)
+
+        doFirst { outFile.parentFile.mkdirs() }
+        commandLine = listOf(
+            matcExec.absolutePath,
+            "-a", "all",
+            "-p", "mobile",
+            "-o", outFile.absolutePath,
+            srcFile.absolutePath,
+        )
+        doLast { outFile.copyTo(resourceCopy, overwrite = true) }
+    }
+
+val compileMoonMaterial = registerMaterialCompile("moon")
+val compileSunMaterial = registerMaterialCompile("sun")
+
+// Umbrella task: name preserved so the downstream `tasks.matching` block (and any
+// developer typing `:shared:compileMaterials`) keeps working unchanged.
+val compileMaterials by tasks.registering {
+    description = "Compile all Filament .mat materials to .filamat."
     group = "filament"
-    dependsOn(downloadFilamentTools)
-
-    val srcFile = layout.projectDirectory
-        .file("src/commonMain/composeResources/files/materials/moon.mat").asFile
-    val outFile = layout.buildDirectory
-        .file("generated/filamat/moon.filamat").get().asFile
-    val resourceCopy = layout.projectDirectory
-        .file("src/commonMain/composeResources/files/materials/moon.filamat").asFile
-    val matcExec = matcBinaryFile
-
-    // No-op until Phase 3 (T030) creates moon.mat.
-    onlyIf { srcFile.exists() }
-    outputs.file(outFile)
-
-    doFirst { outFile.parentFile.mkdirs() }
-    commandLine = listOf(
-        matcExec.absolutePath,
-        "-a", "all",
-        "-p", "mobile",
-        "-o", outFile.absolutePath,
-        srcFile.absolutePath,
-    )
-    doLast { outFile.copyTo(resourceCopy, overwrite = true) }
+    dependsOn(compileMoonMaterial, compileSunMaterial)
 }
 
-// Wire compileMaterials in front of Compose Resources packaging.
-// The onlyIf-guard above keeps it a no-op until moon.mat exists (Phase 3).
+// Wire each material's matc invocation in front of Compose Resources packaging.
+// Gradle's strict-input-output detector wants direct dependencies on the producer
+// tasks (the umbrella `compileMaterials` aggregator isn't enough on its own), so
+// we list each per-material task explicitly. Adding a new material means adding
+// it to this list.
 tasks.matching {
     it.name.startsWith("processAndroidMainResources") ||
         it.name.startsWith("syncComposeResourcesForIos") ||
+        it.name.startsWith("copyNonXmlValueResourcesFor") ||
         it.name == "generateComposeResClass"
 }.configureEach {
-    dependsOn(compileMaterials)
+    dependsOn(compileMoonMaterial, compileSunMaterial)
 }

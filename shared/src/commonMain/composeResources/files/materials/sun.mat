@@ -1,0 +1,50 @@
+// Moon Explorer — sun billboard material. T710 / 07-celestial-background.
+//
+// Unlit emissive disc on a 1x1 quad mesh. The fragment shader checks the
+// pixel's distance from the quad's centre (UV ∈ [0,1]² → centred on (0.5,
+// 0.5)) and discards anything outside the inscribed circle via Filament's
+// `masked` blending — clean circular edge without per-pixel transparent
+// sorting. Inside the disc, the colour is white·intensity, with the
+// `intensity` uniform settable per-frame on the MaterialInstance (~5–10
+// in linear HDR so Phase 3's bloom threshold can cleanly separate the sun
+// from the Moon's reflective max).
+//
+// `position` and `uv0` are required by the vertex pipeline; `tangents`
+// is *not* required (no normal-mapping on a self-emissive billboard).
+
+material {
+    name : sun,
+
+    parameters : [
+        {
+            type : float,
+            name : intensity
+        }
+    ],
+
+    requires : [
+        position,
+        uv0
+    ],
+
+    shadingModel : unlit,
+    blending : masked
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        // UV is [0,1]²; offset to centre at origin so length(uv) = radius.
+        vec2 uv = getUV0() - vec2(0.5);
+        float r = length(uv);
+        // Inscribed disc: alpha = 1 inside, 0 outside. Filament's `masked`
+        // blending discards alpha < _maskThreshold (default 0.4) → clean
+        // circular edge. A smooth falloff across the last 1% of the radius
+        // softens stairstep aliasing without making the disc visibly hazy
+        // before Phase 3's bloom kicks in.
+        float alpha = 1.0 - smoothstep(0.495, 0.5, r);
+
+        prepareMaterial(material);
+        float i = materialParams.intensity;
+        material.baseColor = vec4(i, i, i, alpha);
+    }
+}
