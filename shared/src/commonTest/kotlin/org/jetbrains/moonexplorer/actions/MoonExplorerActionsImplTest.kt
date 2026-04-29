@@ -16,6 +16,8 @@ import kotlinx.coroutines.runBlocking
 import org.jetbrains.moonexplorer.domain.MoonSite
 import org.jetbrains.moonexplorer.domain.SiteCatalog
 import org.jetbrains.moonexplorer.domain.SiteType
+import org.jetbrains.moonexplorer.domain.Vec3
+import org.jetbrains.moonexplorer.domain.lightingPresetSunDir
 import org.jetbrains.moonexplorer.state.MoonRenderState
 import org.jetbrains.moonexplorer.state.MoonViewModel
 
@@ -180,13 +182,120 @@ class MoonExplorerActionsImplTest {
         assertEquals(null, vm.state.value.highlightedSiteId)
     }
 
+    // ---- T432 / 04-sun-control: setLightingPreset (graduated from deferred stub) ----
+
     @Test
-    fun setLightingPreset_returnsDeferredStub() = runBlocking {
+    fun setLightingPreset_returnsOk() = runBlocking {
+        // T431 graduated the 01-shell deferred stub: ack.ok is now true and the message
+        // names the preset (e.g., "lighting set to Day").
         val (_, actions) = newActions()
-        val ack = actions.setLightingPreset(LightingPreset.Day)
-        assertFalse(ack.ok, "deferred stub should return ok=false")
-        assertTrue("deferred" in ack.message, "message should mention deferral")
+        val ack = actions.setLightingPreset(LightingPreset.Day, durationMs = 0L)
+        assertTrue(ack.ok, "graduated impl should return ok=true, got $ack")
+        assertTrue(
+            "Day" in ack.message,
+            "message should name the preset, got '${ack.message}'",
+        )
     }
+
+    @Test
+    fun setLightingPreset_durationZero_snaps() = runBlocking {
+        // FR-007 — durationMs = 0 takes the snap path. From a non-default initial state
+        // (sun pushed to Terminator's position via setSunDirection), tapping the Day preset
+        // with durationMs = 0 should land sunDirection back at (0, 0, 1) exactly.
+        val (vm, actions) = newActions()
+        actions.setSunDirection(lat = 0.0, lon = 90.0)  // sun = (1, 0, 0) — Terminator
+        val ack = actions.setLightingPreset(LightingPreset.Day, durationMs = 0L)
+        assertTrue(ack.ok, "ack should be ok=true, got $ack")
+        val sun = vm.state.value.sunDirection
+        assertWithinTolerance(0f, sun.x, 1e-5f, "snap sun.x")
+        assertWithinTolerance(0f, sun.y, 1e-5f, "snap sun.y")
+        assertWithinTolerance(1f, sun.z, 1e-5f, "snap sun.z")
+    }
+
+    @Test
+    fun setLightingPreset_animated_reachesTargetExactly() = runBlocking {
+        // After completion eased(1) = 1 → state must be exactly at the preset target
+        // within float tolerance, regardless of starting position.
+        val (vm, actions) = newActions()
+        actions.setLightingPreset(LightingPreset.HighContrast, durationMs = 50L)
+        val target = lightingPresetSunDir(LightingPreset.HighContrast)
+        val sun = vm.state.value.sunDirection
+        assertWithinTolerance(target.x, sun.x, 1e-4f, "final sun.x")
+        assertWithinTolerance(target.y, sun.y, 1e-4f, "final sun.y")
+        assertWithinTolerance(target.z, sun.z, 1e-4f, "final sun.z")
+    }
+
+    @Test
+    fun setLightingPreset_animated_progressesMonotonically() = runBlocking {
+        // Day (0,0,1) → Terminator (1,0,0) over 200 ms. Sample mid-animation; assert sun.x
+        // has advanced past 0 but not yet reached 1, sun.z has decreased from 1 but not yet
+        // reached 0, and the magnitude stays ≈ 1 (lerpSunDirection reconstructs unit-length).
+        val (vm, actions) = newActions()
+        // Default sun is (0, 0, 1) = Day; perfect starting state.
+        val job = launch { actions.setLightingPreset(LightingPreset.Terminator, durationMs = 200L) }
+        delay(80L)  // ~40% through; eased ≈ 0.35
+        val mid = vm.state.value.sunDirection
+        job.join()
+        val final = vm.state.value.sunDirection
+
+        val midLen = kotlin.math.sqrt(mid.x * mid.x + mid.y * mid.y + mid.z * mid.z)
+        assertWithinTolerance(1f, midLen, 1e-4f, "mid magnitude unit-length")
+        assertTrue(mid.x > 0f, "mid sun.x should have advanced past 0, got ${mid.x}")
+        assertTrue(mid.x < 1f, "mid sun.x should be < 1 (target), got ${mid.x}")
+        assertTrue(mid.z < 1f, "mid sun.z should have dropped below 1, got ${mid.z}")
+        assertTrue(mid.z > 0f, "mid sun.z should still be positive, got ${mid.z}")
+        assertTrue(final.x > mid.x, "final sun.x should be > mid, got mid=${mid.x} final=${final.x}")
+        assertWithinTolerance(1f, final.x, 1e-4f, "final sun.x at Terminator")
+    }
+
+    @Test
+    fun setLightingPreset_cancelMidAnimation_leavesPartialState() = runBlocking {
+        // Day (0,0,1) → Night (0,0,-1) over 1000 ms. lat/lon lerp routes through
+        // Terminator (1,0,0) at t = 0.5. Cancel after 150 ms (~15% through; eased ≈ 0.014);
+        // assert sun has advanced but is nowhere near Night.
+        val (vm, actions) = newActions()
+        val job = launch { actions.setLightingPreset(LightingPreset.Night, durationMs = 1000L) }
+        delay(150L)
+        job.cancel()
+        job.join()
+
+        val sun = vm.state.value.sunDirection
+        assertTrue(sun.x > 0f, "sun.x should have advanced past 0 (start), got ${sun.x}")
+        assertTrue(sun.z > 0.5f, "sun.z should still be near +1 (not at Night = -1), got ${sun.z}")
+        assertTrue(sun.z < 1f, "sun.z should have dropped from start (1.0), got ${sun.z}")
+    }
+
+    @Test
+    fun setLightingPreset_concurrentSerializesViaMutex() = runBlocking {
+        // Two animated preset calls in parallel. The Mutex serialises them; whichever wins
+        // the lock first runs to completion before the second starts. Final state must
+        // exactly match one of the two targets — no torn writes.
+        val (vm, actions) = newActions()
+        val acks = coroutineScope {
+            listOf(
+                async(Dispatchers.Default) {
+                    actions.setLightingPreset(LightingPreset.Terminator, durationMs = 30L)
+                },
+                async(Dispatchers.Default) {
+                    actions.setLightingPreset(LightingPreset.HighContrast, durationMs = 30L)
+                },
+            ).awaitAll()
+        }
+        assertTrue(acks.all { it.ok }, "both setLightingPreset calls should succeed: $acks")
+
+        val sun = vm.state.value.sunDirection
+        val terminator = lightingPresetSunDir(LightingPreset.Terminator)
+        val highContrast = lightingPresetSunDir(LightingPreset.HighContrast)
+        assertTrue(
+            sunMatches(sun, terminator) || sunMatches(sun, highContrast),
+            "final sun should match Terminator or HighContrast exactly, got $sun",
+        )
+    }
+
+    private fun sunMatches(actual: Vec3, expected: Vec3, tol: Float = 1e-4f): Boolean =
+        withinTolerance(actual.x, expected.x, tol) &&
+            withinTolerance(actual.y, expected.y, tol) &&
+            withinTolerance(actual.z, expected.z, tol)
 
     @Test
     fun compareLocations_computesGeodesicDistance() = runBlocking {

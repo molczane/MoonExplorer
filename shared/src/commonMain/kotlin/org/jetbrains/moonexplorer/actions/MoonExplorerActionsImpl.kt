@@ -15,6 +15,8 @@ import org.jetbrains.moonexplorer.domain.Vec3
 import org.jetbrains.moonexplorer.domain.easeInOutCubic
 import org.jetbrains.moonexplorer.domain.greatCircleDistKm
 import org.jetbrains.moonexplorer.domain.latLonToYawPitch
+import org.jetbrains.moonexplorer.domain.lerpSunDirection
+import org.jetbrains.moonexplorer.domain.lightingPresetSunDir
 import org.jetbrains.moonexplorer.domain.shortestYawDelta
 import org.jetbrains.moonexplorer.domain.yawPitchToLatLon
 import org.jetbrains.moonexplorer.state.MoonViewModel
@@ -28,10 +30,15 @@ import org.jetbrains.moonexplorer.state.MoonViewModel
  * (`searchMoonLocations`, `getCurrentView`, `explainCurrentView`) are parallel-safe and
  * skip the lock.
  *
- * Deferred methods (per FR-007):
- *   - [setLightingPreset] returns `ActionAck(ok = false, …)` until the lighting work lands.
+ * Animation is opt-in via `durationMs > 0`:
+ *   - [flyToMoonLocation] animates camera yaw/pitch over `durationMs` ms with cubic ease-in-out
+ *     (T321 / 03-sites-and-flyto). `durationMs = 0` keeps the snap escape hatch.
+ *   - [setLightingPreset] animates `sunDirection` to the preset target via `lerpSunDirection`
+ *     (lat/lon lerp + `shortestYawDelta`) with cubic ease-in-out, default 500 ms (T431 /
+ *     04-sun-control). `durationMs = 0` snaps. The deferred-stub `ok = false` from 01-shell
+ *     is gone.
+ *   - [setSunDirection] is snap-only — animation is opt-in via the preset path.
  *   - [compareLocations] returns the geodesic distance only; richer comparison deferred.
- *   - [flyToMoonLocation] ignores `durationMs` (snap-to). `03-sites-and-flyto` adds the lerp.
  */
 class MoonExplorerActionsImpl(
     private val viewModel: MoonViewModel,
@@ -108,8 +115,36 @@ class MoonExplorerActionsImpl(
         ActionAck(ok = true, message = "centered on ${site.name}")
     }
 
-    override suspend fun setLightingPreset(preset: LightingPreset): ActionAck =
-        ActionAck(ok = false, message = "lighting preset ${preset.name} deferred to a future spec")
+    override suspend fun setLightingPreset(
+        preset: LightingPreset,
+        durationMs: Long,
+    ): ActionAck = mutex.withLock {
+        val target = lightingPresetSunDir(preset)
+
+        if (durationMs <= 0L) {
+            // Snap path — preserves a test escape hatch and gives external callers an
+            // immediate-positioning option.
+            viewModel.setSunDirection(target)
+            return@withLock ActionAck(ok = true, message = "lighting set to ${preset.name}")
+        }
+
+        // T431 / 04-sun-control — animated path. lat/lon lerp + cubic ease-in-out, identical
+        // control flow to flyToMoonLocation. The screen-level `currentLightingJob.cancel()` is
+        // what interrupts a preset animation mid-flight; the loop's delay() is cancellable so
+        // the unwind is clean and the next preset call acquires the Mutex from the current
+        // (interrupted) state.
+        val start = viewModel.state.value.sunDirection
+        val source = TimeSource.Monotonic.markNow()
+        while (true) {
+            val elapsedMs = source.elapsedNow().inWholeMilliseconds
+            val t = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+            val eased = easeInOutCubic(t)
+            viewModel.setSunDirection(lerpSunDirection(start, target, eased))
+            if (t >= 1f) break
+            delay(FRAME_MS)
+        }
+        ActionAck(ok = true, message = "lighting set to ${preset.name}")
+    }
 
     override suspend fun setSunDirection(lat: Double, lon: Double): ActionAck = mutex.withLock {
         val phi = lat * PI / 180.0

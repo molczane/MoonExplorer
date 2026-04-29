@@ -69,12 +69,12 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T400+
 
 ## Phase 3: Animated `setLightingPreset`
 
-- [ ] **T430** [US3, US4] Amend ADR-0005 + interface signature — `setLightingPreset(preset: LightingPreset, durationMs: Long = 500): ActionAck`
+- [x] **T430** [US3, US4] Amend ADR-0005 + interface signature — `setLightingPreset(preset: LightingPreset, durationMs: Long = 500): ActionAck`. ADR-0005 updated in place (interface code block + new "Amendments" section dated 2026-04-29). Interface kdoc updated to list the amendment alongside 03-flyto's animation graduation note.
   - Edit `actions/MoonExplorerActions.kt` to add the default arg. Non-breaking for existing callers.
   - Edit `ai-docs/decisions/0005-koog-adoption-timing.md` § "Action surface (commonMain, today)" code block — change the `setLightingPreset` line to match. Add a one-paragraph "Amendments" section noting the change with date 2026-04-29 and the spec link.
   - _Requirements: FR-010_
 
-- [ ] **T431** [US3, US4] Rework `MoonExplorerActionsImpl.setLightingPreset` — graduate from `ok = false` deferred stub to real animated impl
+- [x] **T431** [US3, US4] Rework `MoonExplorerActionsImpl.setLightingPreset` — graduated from 01-shell's `ok = false` deferred stub to a real animated impl. Identical control-flow shape to `flyToMoonLocation` (T321): `mutex.withLock` + `TimeSource.Monotonic.markNow()` + cancellable `delay(FRAME_MS)` + `easeInOutCubic` + `lerpSunDirection`. Class kdoc rewritten to remove the deferred-methods note and document `setSunDirection` as snap-only.
   - `durationMs <= 0L` → snap path: `viewModel.setSunDirection(lightingPresetSunDir(preset))`; return `ActionAck(ok = true, message = "lighting set to ${preset.name}")`.
   - `durationMs > 0L` → animation loop, identical control-flow shape to `flyToMoonLocation` (T321):
     ```
@@ -93,7 +93,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T400+
   - Update the class kdoc — remove `setLightingPreset` from the deferred-methods list; note that `setSunDirection(lat, lon)` stays snap-only.
   - _Requirements: FR-005, FR-006, FR-007, FR-008, FR-009_
 
-- [ ] **T432** [P] [US3, US4] Extend `MoonExplorerActionsImplTest`
+- [x] **T432** [P] [US3, US4] Extend `MoonExplorerActionsImplTest` — removed `setLightingPreset_returnsDeferredStub` (01-shell's `ok = false` assertion); added 6 new cases: `setLightingPreset_returnsOk` / `_durationZero_snaps` / `_animated_reachesTargetExactly` / `_animated_progressesMonotonically` / `_cancelMidAnimation_leavesPartialState` / `_concurrentSerializesViaMutex`. Suite count: **99 green** on Android JVM + iOS sim (94 → +5 net).
   - Replace `setLightingPreset_returnsDeferredAck` (the `ok = false` stub test) with `setLightingPreset_returnsOk` (asserts `ok = true`, message contains preset name).
   - Add `setLightingPreset_durationZero_snaps`: `setLightingPreset(LightingPreset.Day, 0)` from a non-default initial state → `state.sunDirection == (0, 0, 1)` exactly.
   - Add `setLightingPreset_animated_reachesTargetExactly`: `setLightingPreset(LightingPreset.HighContrast, 50)`; await; assert `state.sunDirection ≈ (0.866, 0, 0.5)` within 1e-4.
@@ -103,7 +103,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T400+
   - Existing `setSunDirection_unitVector` test stays as-is (snap-only path; ADR-0005 contract for that method is unchanged).
   - _Requirements: SC-007_
 
-- [ ] **T433** [US3, US4] Wire `currentLightingJob` in `MoonExplorerScreen`
+- [x] **T433** [US3, US4] Wire `currentLightingJob` in `MoonExplorerScreen` — declaration added alongside `currentFlyJob` with a `@Suppress("unused")` annotation; the read/write is wired by T440 (Phase 4 SunPanel swap-in). Splitting the declaration from the wire-up keeps Phase 3's commit code-complete (impl + tests + interface change) without dragging the SunControl→SunPanel swap forward.
   - `var currentLightingJob: Job? by remember { mutableStateOf<Job?>(null) }` alongside `currentFlyJob`.
   - In `onPresetTap`: `currentLightingJob?.cancel(); currentLightingJob = scope.launch { actions?.setLightingPreset(preset) }`.
   - Same pattern as `currentFlyJob` from T323; lives at screen level so the impl doesn't know about UI lifetime.

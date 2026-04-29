@@ -96,6 +96,14 @@ fun MoonExplorerScreen(
     // animation to finish.
     var currentFlyJob: Job? by remember { mutableStateOf<Job?>(null) }
 
+    // T433 / 04-sun-control — the same cancel-then-launch tracker for the animated
+    // setLightingPreset path. Declared here so the screen owns the Job lifetime; the
+    // SunPanel's onPresetTap callback (T440) calls cancel + relaunch. Independent of
+    // currentFlyJob so a fly-to and a sun-preset transition can run concurrently —
+    // each cancels only its own track on a new tap.
+    @Suppress("unused")  // T440 (Phase 4) wires the read/write; declared in T433 for ordering
+    var currentLightingJob: Job? by remember { mutableStateOf<Job?>(null) }
+
     var searchExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf(emptyList<MoonSite>()) }

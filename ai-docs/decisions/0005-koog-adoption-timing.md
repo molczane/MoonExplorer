@@ -50,7 +50,7 @@ interface MoonExplorerActions {
 
     // Side-effecting (sequential — mutate shared state; defend with Mutex in impl)
     suspend fun flyToMoonLocation(id: String, durationMs: Long = 1500): ActionAck
-    suspend fun setLightingPreset(preset: LightingPreset): ActionAck
+    suspend fun setLightingPreset(preset: LightingPreset, durationMs: Long = 500): ActionAck
     suspend fun setSunDirection(lat: Double, lon: Double): ActionAck
     suspend fun highlightLocation(id: String, on: Boolean = true): ActionAck
 
@@ -87,6 +87,25 @@ UI button taps and the future Koog tool calls both call into this interface. `Mo
 - `:androidApp` and `iosApp/` add `:shared-ai` as a dependency only when AI is enabled (e.g., via build flavor or startup flag).
 - `MoonExplorerActionsImpl` must defend side-effecting methods with a `Mutex` even when called concurrently — Koog's `toParallelToolCallsRaw` can dispatch multiple side-effecting tool calls in parallel, and we don't want to trust the LLM to serialize.
 - Tests in `commonTest` exercise `MoonExplorerActions` directly; Koog's mock LLM (`getMockExecutor { ... }`) becomes useful only in `:shared-ai` tests.
+
+## Amendments
+
+### 2026-04-29 — `setLightingPreset` gains `durationMs` default arg (04-sun-control)
+
+`setLightingPreset(preset: LightingPreset): ActionAck` becomes
+`setLightingPreset(preset: LightingPreset, durationMs: Long = 500): ActionAck`.
+Non-breaking: existing callers compile unchanged thanks to the default. Mirrors the
+precedent already set by `flyToMoonLocation(id, durationMs = 1500)`. Lets tests run the
+animated path on short timescales (`durationMs = 50L`) and provides a snap escape hatch
+(`durationMs = 0L`) for callers that need immediate positioning. The Phase-3 Koog tool
+binding gets the same expressiveness ("show me Apollo lighting slowly" → tool passes a
+larger durationMs).
+
+The interface code block above is updated in place; the change is recorded here so the
+amendment is discoverable from the ADR's date-ordered history rather than only via git
+log on `MoonExplorerActions.kt`.
+
+References: `ai-docs/specs/04-sun-control/spec.md` FR-010, `plan.md` § "ADR-0005 amendment".
 
 ## References
 
