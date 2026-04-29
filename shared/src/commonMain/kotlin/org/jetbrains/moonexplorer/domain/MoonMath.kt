@@ -147,3 +147,49 @@ fun easeInOutCubic(t: Float): Float {
         1f - (u * u * u) * 0.5f
     }
 }
+
+/**
+ * 2D joystick → unit hemisphere per `ai-docs/research/selenographic-math-camera.md` §6
+ * mode (a). For `(x, y)` inside the unit disk, returns `Vec3(x, y, sqrt(1 − x² − y²))` —
+ * the camera-facing hemisphere bulges out of the screen. For `(x, y)` outside the disk,
+ * clamps to the disk boundary with `z = 0` — the sun grazes the limb (terminator-on-meridian).
+ *
+ * Always unit-length. Replaces the 1-axis `joystickToHemisphereDir(x)` helper that lived
+ * in `ui/SunControl.kt` (deleted in T441). T411 / 04-sun-control.
+ */
+fun joystickToSunDir(x: Float, y: Float): Vec3 {
+    val r2 = x * x + y * y
+    return if (r2 <= 1f) {
+        Vec3(x, y, sqrt(1f - r2))
+    } else {
+        // Outside the disk: project onto the boundary, z = 0.
+        val s = 1f / sqrt(r2)
+        Vec3(x * s, y * s, 0f)
+    }
+}
+
+/**
+ * Interpolates two unit-length sun directions on the lat/lon surface. lat lerps linearly
+ * via `asin(y)`; lon takes the shorter arc via [shortestYawDelta]. The result is reconstructed
+ * via the `latLonToCartesian` formula (`cos(lat) sin(lon), sin(lat), cos(lat) cos(lon)`),
+ * which is unit-length by construction.
+ *
+ * Used by the animated `MoonExplorerActionsImpl.setLightingPreset` (T431). lat/lon lerp
+ * sidesteps slerp's antipodal degenerate (Day↔Night with `dot = -1`): the equatorial
+ * preset table makes lat/lon lerp == slerp on the equator, and Day→Night routes through
+ * `(0°, +90°)` (the Terminator preset) at `t = 0.5` because `shortestYawDelta(0, π) = +π`.
+ *
+ * T411 / 04-sun-control. `t` is clamped to `[0, 1]` defensively.
+ */
+fun lerpSunDirection(from: Vec3, to: Vec3, t: Float): Vec3 {
+    val tt = t.coerceIn(0f, 1f)
+    val fromLat = asin(from.y.coerceIn(-1f, 1f))
+    val toLat = asin(to.y.coerceIn(-1f, 1f))
+    val fromLon = atan2(from.x, from.z)
+    val toLon = atan2(to.x, to.z)
+    val lonDelta = shortestYawDelta(fromLon, toLon)
+    val newLat = fromLat + (toLat - fromLat) * tt
+    val newLon = fromLon + lonDelta * tt
+    val cl = cos(newLat)
+    return Vec3(cl * sin(newLon), sin(newLat), cl * cos(newLon))
+}

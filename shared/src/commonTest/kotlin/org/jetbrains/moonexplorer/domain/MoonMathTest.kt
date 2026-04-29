@@ -2,9 +2,13 @@ package org.jetbrains.moonexplorer.domain
 
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.asin
+import kotlin.math.atan2
+import kotlin.math.sqrt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.jetbrains.moonexplorer.actions.LightingPreset
 
 /**
  * Verifies the selenographic → Cartesian conversion against the worked examples
@@ -112,6 +116,95 @@ class MoonMathTest {
     fun easeInOutCubic_clampsOutOfRange() {
         assertEquals(0f, easeInOutCubic(-0.5f), "negative t should clamp to 0")
         assertEquals(1f, easeInOutCubic(1.5f), "t > 1 should clamp to 1")
+    }
+
+    // ---- T411 / 04-sun-control: joystickToSunDir + lerpSunDirection -----------------
+
+    @Test
+    fun joystickToSunDir_centerIsForward() {
+        // (0, 0) inside disk → +Z (camera-facing hemisphere apex).
+        assertVec3Near(Vec3(0f, 0f, 1f), joystickToSunDir(0f, 0f), TOL_TIGHT)
+    }
+
+    @Test
+    fun joystickToSunDir_diskBoundaryEast() {
+        // (1, 0) on disk edge → (1, 0, 0); z grazes to 0 (terminator-on-meridian).
+        assertVec3Near(Vec3(1f, 0f, 0f), joystickToSunDir(1f, 0f), TOL_TIGHT)
+    }
+
+    @Test
+    fun joystickToSunDir_diskBoundaryNorth() {
+        // (0, 1) on disk edge → (0, 1, 0); z grazes to 0.
+        assertVec3Near(Vec3(0f, 1f, 0f), joystickToSunDir(0f, 1f), TOL_TIGHT)
+    }
+
+    @Test
+    fun joystickToSunDir_outsideDiskClampsToBoundary() {
+        // (2, 0) outside the disk → projected onto boundary (1, 0, 0).
+        assertVec3Near(Vec3(1f, 0f, 0f), joystickToSunDir(2f, 0f), TOL_TIGHT)
+    }
+
+    @Test
+    fun joystickToSunDir_offDiagonalOnBoundary() {
+        // (0.6, 0.8): 0.36 + 0.64 = 1 exactly; lands on the disk edge with z = 0.
+        // Float roundoff may push r² a hair above 1, sending us through the clamp branch —
+        // either path yields the same boundary point within TOL_TIGHT.
+        assertVec3Near(Vec3(0.6f, 0.8f, 0f), joystickToSunDir(0.6f, 0.8f), TOL_TIGHT)
+    }
+
+    @Test
+    fun joystickToSunDir_interiorIsUnitLength() {
+        // (0.5, 0.5) interior → unit-length result with z = sqrt(1 − 0.5).
+        val v = joystickToSunDir(0.5f, 0.5f)
+        assertNear(1f, v.length(), TOL_TIGHT, "|joystick interior| ≈ 1")
+        assertNear(sqrt(0.5f), v.z, TOL_TIGHT, "z = sqrt(1 − x² − y²)")
+    }
+
+    @Test
+    fun lerpSunDirection_endpointsAreExact() {
+        val a = lightingPresetSunDir(LightingPreset.Day)
+        val b = lightingPresetSunDir(LightingPreset.HighContrast)
+        assertVec3Near(a, lerpSunDirection(a, b, 0f), TOL_TIGHT)
+        assertVec3Near(b, lerpSunDirection(a, b, 1f), TOL_TIGHT)
+    }
+
+    @Test
+    fun lerpSunDirection_dayToNightPassesThroughTerminator() {
+        // Day → Night via lat/lon lerp: shortestYawDelta(0, π) = +π (because -π is
+        // excluded from (-π, π]); so the path goes 0° → 90° → 180°, passing through
+        // (1, 0, 0) — the Terminator preset's sub-solar point — at t = 0.5.
+        val day = lightingPresetSunDir(LightingPreset.Day)
+        val night = lightingPresetSunDir(LightingPreset.Night)
+        val mid = lerpSunDirection(day, night, 0.5f)
+        assertVec3Near(Vec3(1f, 0f, 0f), mid, TOL_TIGHT)
+    }
+
+    @Test
+    fun lerpSunDirection_halfToApolloMidArc() {
+        // Half = (0°, +90°), Apollo = (0°, +60°). shortestYawDelta(+π/2, +π/3) = -π/6.
+        // Mid (t=0.5) at lat=0, lon = +π/2 - π/12 = +5π/12 = +75°.
+        val half = lightingPresetSunDir(LightingPreset.Terminator)
+        val apollo = lightingPresetSunDir(LightingPreset.HighContrast)
+        val mid = lerpSunDirection(half, apollo, 0.5f)
+        val midLat = asin(mid.y.coerceIn(-1f, 1f))
+        val midLon = atan2(mid.x, mid.z)
+        assertNear(0f, midLat, TOL_TIGHT, "Half→Apollo mid lat = 0")
+        assertNear((75.0 * PI / 180.0).toFloat(), midLon, TOL_TIGHT, "Half→Apollo mid lon = +75°")
+    }
+
+    @Test
+    fun lerpSunDirection_unitLengthAcrossT() {
+        // Reconstructed result is unit-length by construction at any t. Use an
+        // off-equator joystick start to exercise non-zero lat lerp.
+        val from = joystickToSunDir(0.4f, -0.3f)
+        val to = lightingPresetSunDir(LightingPreset.HighContrast)
+        for (t in floatArrayOf(0f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1f)) {
+            val len = lerpSunDirection(from, to, t).length()
+            assertTrue(
+                abs(len - 1f) < TOL_TIGHT,
+                "lerpSunDirection(.., t=$t).length = $len, expected ≈ 1",
+            )
+        }
     }
 
     private fun assertNear(expected: Float, actual: Float, tol: Float, label: String) {

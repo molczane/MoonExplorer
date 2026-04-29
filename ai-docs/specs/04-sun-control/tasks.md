@@ -13,17 +13,17 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T400+
 
 ## Phase 1: Math + preset table (pure commonMain)
 
-- [ ] **T410** [P] [US2] Implement `domain/LightingPresets.kt`
+- [x] **T410** [P] [US2] Implement `domain/LightingPresets.kt` — exhaustive `when` over the 4 `LightingPreset` enum values returning the spec'd Vec3. Day = `(0,0,1)`, Terminator = `(1,0,0)`, HighContrast = `(0.8660254,0,0.5)`, Night = `(0,0,-1)`.
   - `fun lightingPresetSunDir(preset: LightingPreset): Vec3` — exhaustive `when` over the 4 enum values, returning the spec'd `Vec3` per `plan.md` § "Lighting preset table".
   - Compile-time constants: Day = `(0, 0, 1)`, Terminator = `(1, 0, 0)`, HighContrast = `(0.8660254f, 0, 0.5f)`, Night = `(0, 0, -1)`.
   - _Requirements: FR-005, US2_
 
-- [ ] **T411** [P] [US1, US3] Add `MoonMath.joystickToSunDir` + `MoonMath.lerpSunDirection`
+- [x] **T411** [P] [US1, US3] Add `MoonMath.joystickToSunDir` + `MoonMath.lerpSunDirection` — joystick clamps outside-disk inputs onto the boundary with `z = 0`; lerp uses lat/lon decomposition via `asin(y) + atan2(x, z)` with `shortestYawDelta` (reuses 03 T320's primitive) and `latLonToCartesian` reconstruction.
   - `fun joystickToSunDir(x: Float, y: Float): Vec3` — clamps `(x, y)` to the unit disk; `z = sqrt(max(0, 1 - x² - y²))`. Replaces the 1-axis `joystickToHemisphereDir(x)` currently in `ui/SunControl.kt`.
   - `fun lerpSunDirection(from: Vec3, to: Vec3, t: Float): Vec3` — lat lerps linearly via `asin(y)`; lon takes `shortestYawDelta` (already in MoonMath from 03 T320); reconstructs unit Vec3 via `latLonToCartesian` math (`cos(lat)·sin(lon), sin(lat), cos(lat)·cos(lon)`). `t` clamped to `[0, 1]`.
   - _Requirements: FR-002, FR-004, FR-006, FR-008_
 
-- [ ] **T412** [P] [US1, US2, US3] `commonTest` — extend `MoonMathTest` + add `LightingPresetsTest`
+- [x] **T412** [P] [US1, US2, US3] `commonTest` — added `LightingPresetsTest` (5 cases) + extended `MoonMathTest` (+10 cases): joystick centre / east-boundary / north-boundary / outside-clamp / off-diagonal-boundary / interior-unit-length, plus lerp endpoints / Day→Night-through-Terminator / Half→Apollo-mid-arc-at-+75° / unit-length-across-t. **94 tests green** on Android JVM + iOS sim (was 79 after 03 Phase Final → +15).
   - `LightingPresetsTest` (4 cases): each preset's Vec3 magnitude == 1.0 within 1e-6; concrete value sanity-check.
   - `MoonMathTest` extensions (~9 cases per the plan):
     - `joystickToSunDir(0, 0)` → `(0, 0, 1)`; magnitude 1.
