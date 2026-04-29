@@ -115,7 +115,7 @@ Pay down the Phase 0 spike's asset deviations: real NASA SVS Moon textures shipp
 
 **Assumptions:**
 - ADR-0004 (asset strategy) is the source of truth.
-- ADR-0010 (CDN host choice) is filed before tasks T120+ start.
+- ADR-0010 chose GitHub Releases as the HD CDN; T109 / T120 are unblocked once the repo is pushed to a known GitHub owner.
 - NASA SVS CGI Moon Kit assets remain hosted at `https://svs.gsfc.nasa.gov/4720` for the duration of this spec's work.
 - The chosen CDN host supports HTTPS, range requests for resumable downloads, and ETag-based cacheability.
 - Bake script + `toktx` run on a Mac dev machine; the resulting KTX2 binaries are committed for the 2 K tier and uploaded once for the 8 K tier.
@@ -126,7 +126,7 @@ Pay down the Phase 0 spike's asset deviations: real NASA SVS Moon textures shipp
 - ADR-0003 (renderer host pattern — pull-not-push)
 - ADR-0004 (asset strategy — what we're now implementing)
 - ADR-0009 (spike deviations log — what we're paying down)
-- ADR-0010 (CDN host — TBD; gate for T120)
+- ADR-0010 (CDN host — GitHub Releases)
 - `ai-docs/research/moon-assets.md` — full asset catalog + bake / convert workflow
 - `ai-docs/specs/00-renderer-spike/results.md` — handoff state
 - `./plan.md`

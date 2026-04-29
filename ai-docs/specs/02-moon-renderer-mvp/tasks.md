@@ -19,7 +19,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
   - Apply `kotlin("plugin.serialization")` to `:shared`.
   - _Requirements: ADR-0004, FR-002_
 
-- [ ] **T102** File **ADR-0010 — CDN host choice**
+- [x] **T102** File **ADR-0010 — CDN host choice**
   - Compare Cloudflare R2 / GitHub Releases / AWS S3 for our scale (≤ 50 MB / version, low traffic).
   - Recommend GitHub Releases for simplicity (free, unlimited bandwidth, immutable per release, no auth required for static assets).
   - Document the URL pattern (e.g. `https://github.com/<user>/<repo>/releases/download/assets-vN/moon_albedo_8k.ktx2`) and the version-bump procedure.
