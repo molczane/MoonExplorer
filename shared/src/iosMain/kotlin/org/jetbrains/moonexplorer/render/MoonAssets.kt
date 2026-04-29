@@ -4,21 +4,18 @@ import moonexplorer.shared.generated.resources.Res
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 
 /**
- * Loads the Phase 0 spike's bundled material + texture bytes from
- * `composeResources/files/...` and pushes them into the Swift-side renderer
- * via [MoonRendererProvider.applyAssets].
+ * iOS-only one-shot at app startup: read the bundled `.filamat` material payload from
+ * compose resources and push it through [MoonRendererProvider.applyMaterial]. The Swift
+ * `iOSApp.init()` calls this from a `Task { try? await … }` so the renderer is ready by
+ * the time first frame fires.
  *
- * Called from `iOSApp.swift`'s `init()` task: `Task { try? await
- * MoonAssetsKt.loadAndPushBundledAssets() }` (top-level Kotlin function →
- * `MoonAssetsKt.loadAndPushBundledAssets()` from Swift).
- *
- * Filenames per Phase 0 deviation from tasks.md (T031): `.png` for both
- * textures (KTX2 deferred to a later phase). Material is `.filamat`.
+ * Texture loading is no longer this function's concern — `MoonAssetLoader` (commonMain)
+ * pushes the bundled 2 K + (iOS-only) HD KTX2 byte sets via `state.textureSet`, and
+ * `MoonViewport.ios.kt`'s `LaunchedEffect` forwards them through
+ * `MoonRendererProvider.applyTextureSet`.
  */
 @OptIn(ExperimentalResourceApi::class)
-suspend fun loadAndPushBundledAssets() {
-    val albedo = Res.readBytes("files/textures/moon_albedo_2k.png")
-    val normal = Res.readBytes("files/textures/moon_normal_2k.png")
+suspend fun loadAndPushMaterial() {
     val material = Res.readBytes("files/materials/moon.filamat")
-    MoonRendererProvider.applyAssets(albedo, normal, material)
+    MoonRendererProvider.applyMaterial(material)
 }

@@ -33,23 +33,25 @@ struct iOSApp: App {
         provider.applyMoonRotation = { rot in
             renderer.setMoonRotation(rot.floatValue)
         }
-        provider.applyAssets = { albedo, normal, material in
-            renderer.loadAssets(
+        provider.applyMaterial = { material in
+            renderer.loadMaterial(material: material.toData())
+        }
+        provider.applyTextureSet = { albedo, normal, isHd in
+            renderer.loadTextureSet(
                 albedo: albedo.toData(),
                 normal: normal.toData(),
-                material: material.toData()
+                isHd: isHd.boolValue
             )
         }
         provider.dispose = { renderer.tearDown() }
 
-        // Pre-fetch bundled material + textures via Compose Resources, then
-        // push them through the provider. The K/N suspend completion callback
-        // is wrapped automatically into a Swift async function.
+        // Pre-fetch the bundled .filamat material via Compose Resources. Texture loading is
+        // handled by MoonAssetLoader (commonMain) → state.textureSet → applyTextureSet.
         Task {
             do {
-                try await MoonAssetsKt.loadAndPushBundledAssets()
+                try await MoonAssetsKt.loadAndPushMaterial()
             } catch {
-                print("loadAndPushBundledAssets failed: \(error)")
+                print("loadAndPushMaterial failed: \(error)")
             }
         }
     }

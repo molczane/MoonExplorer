@@ -24,15 +24,21 @@ object MoonRendererProvider {
     var applyCamera: (yawRad: Float, pitchRad: Float, distance: Float) -> Unit = { _, _, _ -> }
     var applySunDirection: (x: Float, y: Float, z: Float) -> Unit = { _, _, _ -> }
     var applyMoonRotation: (rotationRad: Float) -> Unit = { _ -> }
-    var applyAssets: (albedo: ByteArray, normal: ByteArray, material: ByteArray) -> Unit = { _, _, _ -> }
+    /** One-shot at startup. Compiled .filamat material payload — kicks off material + renderable build. */
+    var applyMaterial: (material: ByteArray) -> Unit = { _ -> }
+    /**
+     * Pushed when [state.textureSet] advances (Placeholder → Bundled2K → Hd8K). The
+     * `isHd` flag selects the decoder: PNG via decodePngToRgba8 for the bundled 2 K tier,
+     * KTX2 + Basis Universal via Ktx2Reader for the HD tier (ADR-0011 keeps HD iOS-only).
+     */
+    var applyTextureSet: (albedo: ByteArray, normal: ByteArray, isHd: Boolean) -> Unit = { _, _, _ -> }
     var dispose: () -> Unit = {}
 
     /**
-     * Phase Final (T091). True once Swift has assigned [factory]. False
-     * indicates the iOS app forgot to wire `MoonRendererProvider` in
-     * `iOSApp.init()` — the Filament renderer will not start.
-     * `MoonViewport.ios.kt` logs a warning at first composition when this
-     * is still false (visible in the Xcode console / Console.app).
+     * True once Swift has assigned [factory]. False indicates the iOS app forgot to wire
+     * `MoonRendererProvider` in `iOSApp.init()` — the Filament renderer will not start.
+     * `MoonViewport.ios.kt` logs a warning at first composition when this is still false
+     * (visible in the Xcode console / Console.app).
      */
     val isFactoryWired: Boolean get() = _factoryWired
 }

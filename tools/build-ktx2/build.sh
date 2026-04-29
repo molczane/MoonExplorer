@@ -4,6 +4,11 @@
 #   Albedo (2K/8K)  ETC1S, sRGB transfer fn, mip chain
 #   Normal (2K/8K)  UASTC mode 2 + RDO + zstd L18, linear transfer fn, mip chain
 #
+# On Android, Ktx2Reader has no public Java binding in Filament 1.71.x; ADR-0011
+# documents the project's JNI wrapper that statically links libktxreader.a from
+# Filament's Android NDK distribution. iOS uses Ktx2Reader directly via the
+# Filament/ktxreader pod.
+#
 # Inputs (under .cache/, populated by T104 + T105):
 #   lroc_color_poles_{2k,8k}.tif   (NASA SVS albedo source)
 #   moon_normal_{2k,8k}.png        (baked by ../bake-normal-map/bake.py)

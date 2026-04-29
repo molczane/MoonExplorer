@@ -28,6 +28,8 @@
 #include <math/vec3.h>
 #include <math/vec4.h>
 
+#include <ktxreader/Ktx2Reader.h>
+
 #include <utils/Entity.h>
 #include <utils/EntityManager.h>
 
@@ -184,6 +186,57 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     delete vec;
 }
 
+// Decode an albedo / normal PNG NSData into a freshly-uploaded Filament Texture (RGBA8888,
+// single mip — bundled 2 K bytes are small enough that mipmapping isn't worth a polish-grade
+// gen-mips pass for the bundled tier).
+Texture* uploadPngTexture(Engine& engine, NSData* png, Texture::InternalFormat fmt) {
+    uint32_t w = 0, h = 0;
+    NSData* rgba = decodePngToRgba8(png, &w, &h);
+    if (!rgba) return nullptr;
+
+    Texture* tex = Texture::Builder()
+        .width(w).height(h).levels(1)
+        .sampler(Texture::Sampler::SAMPLER_2D)
+        .format(fmt)
+        .build(engine);
+    if (!tex) return nullptr;
+
+    const size_t size = (size_t)w * (size_t)h * 4;
+    void* keep = (__bridge_retained void*)rgba;
+    Texture::PixelBufferDescriptor pbd(
+        rgba.bytes, size,
+        Texture::Format::RGBA, Texture::Type::UBYTE,
+        &releaseNsData, keep);
+    tex->setImage(engine, 0, std::move(pbd));
+    return tex;
+}
+
+// Transcode a KTX2 + Basis Universal blob into a Filament Texture, picking the GPU-native
+// compressed format from the requested-format priority list. ASTC 8x8 / ETC2 / RGBA8 fallback
+// covers iOS A8+ Metal devices.
+Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
+    if (!ktx2 || ktx2.length == 0) return nullptr;
+    ktxreader::Ktx2Reader reader(engine, /*quiet*/ true);
+    if (srgb) {
+        reader.requestFormat(Texture::InternalFormat::SRGB8_ALPHA8_ASTC_8x8);
+        reader.requestFormat(Texture::InternalFormat::SRGB8_ALPHA8_ASTC_6x6);
+        reader.requestFormat(Texture::InternalFormat::SRGB8_ALPHA8_ASTC_4x4);
+        reader.requestFormat(Texture::InternalFormat::ETC2_SRGB8_A8);
+        reader.requestFormat(Texture::InternalFormat::SRGB8_A8);
+    } else {
+        reader.requestFormat(Texture::InternalFormat::RGBA_ASTC_8x8);
+        reader.requestFormat(Texture::InternalFormat::RGBA_ASTC_6x6);
+        reader.requestFormat(Texture::InternalFormat::RGBA_ASTC_4x4);
+        reader.requestFormat(Texture::InternalFormat::ETC2_EAC_RGBA8);
+        reader.requestFormat(Texture::InternalFormat::RGBA8);
+    }
+    return reader.load(
+        ktx2.bytes,
+        ktx2.length,
+        srgb ? ktxreader::Ktx2Reader::TransferFunction::sRGB
+             : ktxreader::Ktx2Reader::TransferFunction::LINEAR);
+}
+
 } // namespace
 
 // --- ObjC wrapper ---
@@ -203,13 +256,20 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
 
     Material* _material;
     MaterialInstance* _materialInstance;
-    Texture* _albedoTex;       // primary
-    Texture* _albedoTexAlt;    // alt — Phase 6 (T060) swap target
+    Texture* _albedoTex;
     Texture* _normalTex;
-    int _currentAlbedoVariant;
     VertexBuffer* _vertexBuffer;
     IndexBuffer* _indexBuffer;
     uint32_t _indexCount;
+
+    // Dedup for loadTextureSetAlbedo:normal:isHd: — Compose's LaunchedEffect on textureSet
+    // changes only refires when the data class equals differs (ByteArray identity), but a
+    // belt-and-braces ptr+length check here protects against re-binding identical bytes.
+    const void* _lastAlbedoPtr;
+    NSUInteger _lastAlbedoLen;
+    const void* _lastNormalPtr;
+    NSUInteger _lastNormalLen;
+    BOOL _lastWasHd;
 
     CADisplayLink* _displayLink;
     BOOL _running;
@@ -240,8 +300,11 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     _materialBuilt = NO;
     _meshBuilt = NO;
     _indexCount = 0;
-    _albedoTexAlt = nullptr;
-    _currentAlbedoVariant = 0;
+    _lastAlbedoPtr = nullptr;
+    _lastAlbedoLen = 0;
+    _lastNormalPtr = nullptr;
+    _lastNormalLen = 0;
+    _lastWasHd = NO;
 
     // Initial state matches MoonRenderState defaults.
     _yaw = 0.0f;
@@ -338,7 +401,6 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     if (_indexBuffer)    { _engine->destroy(_indexBuffer);    _indexBuffer    = nullptr; }
     if (_vertexBuffer)   { _engine->destroy(_vertexBuffer);   _vertexBuffer   = nullptr; }
     if (_albedoTex)      { _engine->destroy(_albedoTex);      _albedoTex      = nullptr; }
-    if (_albedoTexAlt)   { _engine->destroy(_albedoTexAlt);   _albedoTexAlt   = nullptr; }
     if (_normalTex)      { _engine->destroy(_normalTex);      _normalTex      = nullptr; }
     if (_materialInstance) { _engine->destroy(_materialInstance); _materialInstance = nullptr; }
     if (_material)       { _engine->destroy(_material);       _material       = nullptr; }
@@ -393,133 +455,21 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
     _moonRotation = rotation;
 }
 
-- (void)loadAltAlbedo:(NSData *)albedo {
-    if (_engine == nullptr || albedo.length == 0) return;
-    if (_albedoTexAlt != nullptr) return; // hot-reload deferred to 02-moon-renderer-mvp
+- (void)loadMaterial:(NSData *)material {
+    if (_engine == nullptr || material.length == 0) return;
+    if (_materialBuilt) return;
 
-    uint32_t w = 0, h = 0;
-    NSData* rgba = decodePngToRgba8(albedo, &w, &h);
-    if (!rgba) return;
-
-    _albedoTexAlt = Texture::Builder()
-        .width(w).height(h).levels(1)
-        .sampler(Texture::Sampler::SAMPLER_2D)
-        .format(Texture::InternalFormat::SRGB8_A8)
+    // The Builder copies the package contents internally; safe to release the NSData after build().
+    _material = Material::Builder()
+        .package(material.bytes, material.length)
         .build(*_engine);
-    if (_albedoTexAlt) {
-        const size_t size = (size_t)w * (size_t)h * 4;
-        void* keep = (__bridge_retained void*)rgba;
-        Texture::PixelBufferDescriptor pbd(
-            rgba.bytes, size,
-            Texture::Format::RGBA, Texture::Type::UBYTE,
-            &releaseNsData, keep);
-        _albedoTexAlt->setImage(*_engine, 0, std::move(pbd));
-    }
-}
+    if (!_material) return;
+    _materialInstance = _material->createInstance("moonInstance");
+    _materialBuilt = (_materialInstance != nullptr);
+    if (!_materialBuilt) return;
 
-- (void)setAlbedoVariant:(int)variant {
-    if (_engine == nullptr || _materialInstance == nullptr) return;
-    if (variant != 0 && variant != 1) return;
-    if (variant == _currentAlbedoVariant) return;
-
-    Texture* target = (variant == 0) ? _albedoTex : _albedoTexAlt;
-    if (target == nullptr) return; // alt not yet uploaded; ignore
-
-    // Same sampler config as the initial bind in loadAssetsAlbedo:
-    // REPEAT in U (longitude wraps), CLAMP_TO_EDGE in V (poles).
-    TextureSampler sampler(
-        TextureSampler::MinFilter::LINEAR,
-        TextureSampler::MagFilter::LINEAR,
-        TextureSampler::WrapMode::REPEAT,
-        TextureSampler::WrapMode::CLAMP_TO_EDGE,
-        TextureSampler::WrapMode::CLAMP_TO_EDGE);
-    _materialInstance->setParameter("albedo", target, sampler);
-    _currentAlbedoVariant = variant;
-}
-
-- (void)loadAssetsAlbedo:(NSData *)albedo
-                  normal:(NSData *)normal
-                material:(NSData *)material {
-    if (_engine == nullptr) return;
-
-    // TODO(02-moon-renderer-mvp): hot-reload support. The current asset
-    // upload guards on `_albedoTex == nullptr` etc., so a second loadAssets
-    // call (e.g., HD texture streaming) is silently ignored. Resolve by
-    // destroying the previous texture before re-uploading. Phase 3 review #6.
-
-    // --- Material: build once. The .filamat blob is parsed by Filament. ---
-    if (!_materialBuilt && material.length > 0) {
-        // The Builder copies the package contents internally; safe to release
-        // the NSData after build().
-        _material = Material::Builder()
-            .package(material.bytes, material.length)
-            .build(*_engine);
-        if (_material) {
-            _materialInstance = _material->createInstance("moonInstance");
-            _materialBuilt = (_materialInstance != nullptr);
-        }
-    }
-
-    // --- Textures ---
-    if (_materialBuilt && _materialInstance) {
-        if (albedo.length > 0) {
-            uint32_t w = 0, h = 0;
-            NSData* rgba = decodePngToRgba8(albedo, &w, &h);
-            if (rgba && _albedoTex == nullptr) {
-                _albedoTex = Texture::Builder()
-                    .width(w).height(h).levels(1)
-                    .sampler(Texture::Sampler::SAMPLER_2D)
-                    .format(Texture::InternalFormat::SRGB8_A8)
-                    .build(*_engine);
-                if (_albedoTex) {
-                    const size_t size = (size_t)w * (size_t)h * 4;
-                    void* keep = (__bridge_retained void*)rgba;
-                    Texture::PixelBufferDescriptor pbd(
-                        rgba.bytes, size,
-                        Texture::Format::RGBA, Texture::Type::UBYTE,
-                        &releaseNsData, keep);
-                    _albedoTex->setImage(*_engine, 0, std::move(pbd));
-                }
-            }
-        }
-        if (normal.length > 0) {
-            uint32_t w = 0, h = 0;
-            NSData* rgba = decodePngToRgba8(normal, &w, &h);
-            if (rgba && _normalTex == nullptr) {
-                _normalTex = Texture::Builder()
-                    .width(w).height(h).levels(1)
-                    .sampler(Texture::Sampler::SAMPLER_2D)
-                    .format(Texture::InternalFormat::RGBA8)
-                    .build(*_engine);
-                if (_normalTex) {
-                    const size_t size = (size_t)w * (size_t)h * 4;
-                    void* keep = (__bridge_retained void*)rgba;
-                    Texture::PixelBufferDescriptor pbd(
-                        rgba.bytes, size,
-                        Texture::Format::RGBA, Texture::Type::UBYTE,
-                        &releaseNsData, keep);
-                    _normalTex->setImage(*_engine, 0, std::move(pbd));
-                }
-            }
-        }
-
-        if (_albedoTex && _normalTex) {
-            // REPEAT in U (longitude wraps), CLAMP_TO_EDGE in V (poles).
-            // Phase 0 ships a single mip-level; mipmapping is a polish task.
-            TextureSampler albedoSampler(
-                TextureSampler::MinFilter::LINEAR,
-                TextureSampler::MagFilter::LINEAR,
-                TextureSampler::WrapMode::REPEAT,
-                TextureSampler::WrapMode::CLAMP_TO_EDGE,
-                TextureSampler::WrapMode::CLAMP_TO_EDGE);
-            TextureSampler normalSampler = albedoSampler;
-            _materialInstance->setParameter("albedo", _albedoTex, albedoSampler);
-            _materialInstance->setParameter("normalMap", _normalTex, normalSampler);
-        }
-    }
-
-    // --- Mesh + renderable. Built once, after the material is ready. ---
-    if (_materialBuilt && _materialInstance && !_meshBuilt) {
+    // --- Mesh + renderable. Built once, immediately after the material is ready. ---
+    if (!_meshBuilt) {
         std::vector<Vertex> vertices;
         std::vector<uint16_t> indices;
         generateSphereMesh(64, 32, vertices, indices);
@@ -574,6 +524,59 @@ void releaseStdVectorIndices(void*, size_t, void* user) {
 
         _meshBuilt = YES;
     }
+}
+
+- (void)loadTextureSetAlbedo:(NSData *)albedo
+                      normal:(NSData *)normal
+                        isHd:(BOOL)isHd {
+    if (_engine == nullptr || _materialInstance == nullptr) return;
+    if (albedo.length == 0 || normal.length == 0) return;
+
+    // Dedup: if the same byte buffers + same isHd flag arrive twice in a row, skip — the
+    // textureSet hasn't actually changed.
+    if (albedo.bytes == _lastAlbedoPtr && albedo.length == _lastAlbedoLen
+            && normal.bytes == _lastNormalPtr && normal.length == _lastNormalLen
+            && isHd == _lastWasHd) {
+        return;
+    }
+
+    Texture* newAlbedo = nullptr;
+    Texture* newNormal = nullptr;
+    if (isHd) {
+        newAlbedo = uploadKtx2Texture(*_engine, albedo, /*srgb*/ YES);
+        newNormal = uploadKtx2Texture(*_engine, normal, /*srgb*/ NO);
+    } else {
+        newAlbedo = uploadPngTexture(*_engine, albedo, Texture::InternalFormat::SRGB8_A8);
+        newNormal = uploadPngTexture(*_engine, normal, Texture::InternalFormat::RGBA8);
+    }
+    if (newAlbedo == nullptr || newNormal == nullptr) {
+        if (newAlbedo) _engine->destroy(newAlbedo);
+        if (newNormal) _engine->destroy(newNormal);
+        return;
+    }
+
+    // REPEAT in U (longitude wraps), CLAMP_TO_EDGE in V (poles). Filament reads the mip
+    // chain when present (KTX2 path); LINEAR_MIPMAP_LINEAR safely degrades to LINEAR for
+    // single-level textures (the PNG path), so one sampler config covers both.
+    TextureSampler sampler(
+        TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR,
+        TextureSampler::MagFilter::LINEAR,
+        TextureSampler::WrapMode::REPEAT,
+        TextureSampler::WrapMode::CLAMP_TO_EDGE,
+        TextureSampler::WrapMode::CLAMP_TO_EDGE);
+    _materialInstance->setParameter("albedo", newAlbedo, sampler);
+    _materialInstance->setParameter("normalMap", newNormal, sampler);
+
+    if (_albedoTex) _engine->destroy(_albedoTex);
+    if (_normalTex) _engine->destroy(_normalTex);
+    _albedoTex = newAlbedo;
+    _normalTex = newNormal;
+
+    _lastAlbedoPtr = albedo.bytes;
+    _lastAlbedoLen = albedo.length;
+    _lastNormalPtr = normal.bytes;
+    _lastNormalLen = normal.length;
+    _lastWasHd = isHd;
 }
 
 - (void)renderloop {

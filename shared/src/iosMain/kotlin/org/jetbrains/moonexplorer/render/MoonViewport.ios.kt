@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitViewController
 import kotlinx.cinterop.ExperimentalForeignApi
 import org.jetbrains.moonexplorer.state.MoonRenderState
+import org.jetbrains.moonexplorer.state.TextureSet
 
 /**
  * iOS actual for the renderer-host seam (ADR-0003). The platform host is the
@@ -34,10 +35,22 @@ actual fun MoonViewport(state: MoonRenderState, modifier: Modifier) {
                 "[MoonExplorer] WARNING: MoonRendererProvider was not wired " +
                     "by the iOS app — Filament renderer will not start. " +
                     "Wire MoonRendererProvider.shared.{factory, applyCamera, " +
-                    "applySunDirection, applyMoonRotation, applyAssets, " +
-                    "dispose} in iOSApp.init(). See ADR-0002 §\"Bridge " +
-                    "pattern\" and iosApp/README.md.",
+                    "applySunDirection, applyMoonRotation, applyMaterial, " +
+                    "applyTextureSet, dispose} in iOSApp.init(). See ADR-0002 " +
+                    "§\"Bridge pattern\" and iosApp/README.md.",
             )
+        }
+    }
+    // Push texture-set changes (Placeholder -> Bundled2K -> Hd8K) only when state.textureSet
+    // changes; the data-class equals on Bundled2K/Hd8K compares ByteArray identity, and the
+    // loader allocates fresh arrays per push, so a real change always triggers re-fire.
+    LaunchedEffect(state.textureSet) {
+        when (val ts = state.textureSet) {
+            is TextureSet.Bundled2K ->
+                MoonRendererProvider.applyTextureSet(ts.albedoBytes, ts.normalBytes, false)
+            is TextureSet.Hd8K ->
+                MoonRendererProvider.applyTextureSet(ts.albedoBytes, ts.normalBytes, true)
+            TextureSet.Placeholder -> Unit
         }
     }
     val vc = remember { MoonRendererProvider.factory() }

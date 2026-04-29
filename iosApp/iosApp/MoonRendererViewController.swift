@@ -19,9 +19,12 @@ final class MoonRendererViewController: UIViewController {
 
     private var renderer: MoonRenderer?
     private var rendererView: MoonRendererView?
-    private var pendingAlbedo: Data?
-    private var pendingNormal: Data?
+
+    // Pending pushes that arrive before viewDidLoad creates the underlying MoonRenderer.
     private var pendingMaterial: Data?
+    private var pendingTextureAlbedo: Data?
+    private var pendingTextureNormal: Data?
+    private var pendingTextureIsHd: Bool = false
 
     override func loadView() {
         let v = MoonRendererView(frame: .zero)
@@ -40,10 +43,16 @@ final class MoonRendererViewController: UIViewController {
         guard let v = rendererView else { return }
         let r = MoonRenderer(layer: v.layer)
         renderer = r
-        // Push any assets that arrived before the renderer existed.
-        if let a = pendingAlbedo, let n = pendingNormal, let m = pendingMaterial {
-            r.loadAssetsAlbedo(a, normal: n, material: m)
-            pendingAlbedo = nil; pendingNormal = nil; pendingMaterial = nil
+        // Drain any pushes that arrived before viewDidLoad: material first (it builds the
+        // mesh + renderable), then the texture set (binds samplers).
+        if let m = pendingMaterial {
+            r.loadMaterial(m)
+            pendingMaterial = nil
+        }
+        if let a = pendingTextureAlbedo, let n = pendingTextureNormal {
+            r.loadTextureSetAlbedo(a, normal: n, isHd: pendingTextureIsHd)
+            pendingTextureAlbedo = nil
+            pendingTextureNormal = nil
         }
     }
 
@@ -71,13 +80,21 @@ final class MoonRendererViewController: UIViewController {
         renderer?.setMoonRotation(rotation)
     }
 
-    @objc func loadAssets(albedo: Data, normal: Data, material: Data) {
+    @objc func loadMaterial(material: Data) {
         if let r = renderer {
-            r.loadAssetsAlbedo(albedo, normal: normal, material: material)
+            r.loadMaterial(material)
         } else {
-            pendingAlbedo = albedo
-            pendingNormal = normal
             pendingMaterial = material
+        }
+    }
+
+    @objc func loadTextureSet(albedo: Data, normal: Data, isHd: Bool) {
+        if let r = renderer {
+            r.loadTextureSetAlbedo(albedo, normal: normal, isHd: isHd)
+        } else {
+            pendingTextureAlbedo = albedo
+            pendingTextureNormal = normal
+            pendingTextureIsHd = isHd
         }
     }
 

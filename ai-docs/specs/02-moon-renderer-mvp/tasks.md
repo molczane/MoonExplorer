@@ -102,20 +102,20 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
   - Update `MoonViewModel` to drop `toggleAlbedoVariant` / `setAlbedoVariant`, add `setTextureSet(TextureSet)`.
   - _Requirements: FR-001, FR-003_
 
-- [ ] **T115** [US1] Replace `MoonHost`'s PNG decode with KTX2 loading (Android)
+- [x] **T115** [US1] Replace `MoonHost`'s PNG decode with KTX2 loading (Android) — **PNG path retained per ADR-0011** (Filament 1.71.x has no public Java binding for `Ktx2Reader`; bundled tier ships PNG; HD KTX2 deferred to a future spec). `applyTextureSet` per-frame rebind landed; `runBlocking` texture reads removed.
   - Use `KTXLoader.createTextureFromBuffer(engine, ByteBuffer.wrap(bytes), KTXLoader.Options())` from `filament-utils-android`.
   - New `applyTextureSet(state)` rebinds material samplers when `state.textureSet` changes (state-driven swap pattern from Phase 0 T060).
   - `LINEAR_MIPMAP_LINEAR` minfilter to use the KTX2 mip chain.
   - Drop `BitmapFactory.decodeByteArray` + `uploadTexture(...)` paths.
   - _Requirements: FR-001, FR-003, FR-008_
 
-- [ ] **T116** [US1] Replace `MoonRenderer.mm`'s PNG decode with KTX2 loading (iOS)
+- [x] **T116** [US1] Replace `MoonRenderer.mm`'s PNG decode with KTX2 loading (iOS) — `loadTextureSetAlbedo:normal:isHd:` dispatches to `decodePngToRgba8` for Bundled2K and `Ktx2Reader::load` for Hd8K. ADR-0011 keeps HD streaming iOS-only.
   - Use `Ktx2Reader::Async::doTranscoding` + `uploadImages` per `ai-docs/research/filament-cmp-integration.md` §5.
   - `_albedoTex` + `_normalTex` rebuilt from KTX2 byte arrays.
   - Drop `decodePngToRgba8` + `_albedoTexAlt` + `_currentAlbedoVariant`. Replace `loadAssetsAlbedo:normal:material:` + `loadAltAlbedo:` + `setAlbedoVariant:` with a single `loadTextureSetAlbedo:normal:material:variant:`.
   - _Requirements: FR-001, FR-003, FR-008_
 
-- [ ] **T117** [US3] Implement `assets/MoonAssetLoader.kt` + drop `runBlocking` from `MoonHost.init`
+- [x] **T117** [US3] Implement `assets/MoonAssetLoader.kt` + drop `runBlocking` from `MoonHost.init`
   - `class MoonAssetLoader(scope: CoroutineScope, storage: StorageDir, http: HttpClient, viewModel: MoonViewModel)`.
   - `suspend fun loadInto()`: read bundled 2 K → `viewModel.setTextureSet(Bundled2K(...))` → read manifest → `cache.lookupOrFetch` for albedo + normal → `viewModel.setTextureSet(Hd8K(...))`.
   - `MoonHost.init` no longer reads assets directly; it just observes `state.textureSet` and applies on change.

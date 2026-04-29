@@ -68,8 +68,8 @@ Pay down the Phase 0 spike's asset deviations: real NASA SVS Moon textures shipp
 
 ### Functional Requirements
 
-- **FR-001**: WHEN the app starts THEN the system SHALL load the 2 K bundled albedo + normal as KTX2 + Basis Universal via Filament's `Ktx2Reader` (Android: `filament-utils-android` `KTXLoader`; iOS: `Filament/ktxreader` subspec — already in the Phase 0 Podfile).
-- **FR-002**: WHEN the app starts AND the HD cache is empty AND the device has free storage THEN the system SHALL fetch the 8 K albedo + normal from the CDN URLs listed in the manifest and persist them to platform Files dir.
+- **FR-001**: WHEN the app starts THEN the system SHALL load the 2 K bundled albedo + normal — as PNG decoded via `BitmapFactory` on Android and `decodePngToRgba8` on iOS, per ADR-0011 (Filament 1.71.x has no public Java binding for `Ktx2Reader`). The HD 8 K tier is KTX2 + Basis Universal on iOS only.
+- **FR-002**: **iOS only** (per ADR-0011). WHEN the app starts AND the HD cache is empty AND the device has free storage THEN the system SHALL fetch the 8 K KTX2 albedo + normal from the CDN URLs listed in the manifest and persist them to platform Files dir. On Android, `isHdStreamingSupported = false` skips the fetch and stays at the bundled 2 K tier.
 - **FR-003**: WHEN the HD assets land in the cache AND the renderer is alive THEN the system SHALL transcode and rebind them in place of the 2 K bundles within one frame (no Engine teardown). The variant-swap pattern from `00-renderer-spike` T060 is reused.
 - **FR-004**: WHEN cached HD assets are loaded THEN the system SHALL verify SHA-256 against the manifest BEFORE binding to Filament; on mismatch SHALL discard the cache file and re-download on next launch.
 - **FR-005**: WHEN the user opens the About surface THEN the system SHALL display the verbatim NASA SVS attribution string from ADR-0004.
@@ -87,7 +87,7 @@ Pay down the Phase 0 spike's asset deviations: real NASA SVS Moon textures shipp
 
 ## Non-Functional Requirements
 
-- **Bundle size**: 2 K KTX2/ETC1S albedo + 2 K UASTC normal ≤ 5 MB total. Total install (with Compose runtime + Filament native libs) ≤ 50 MB so the Play Store warning isn't tripped.
+- **Bundle size**: 2 K PNG albedo + 2 K PNG normal ≤ 7 MB total (per ADR-0011 the bundled tier reverted from KTX2 to PNG on both platforms; observed ~6.3 MB). Total install (with Compose runtime + Filament native libs) ≤ 50 MB so the Play Store warning isn't tripped.
 - **HD download size**: 8 K KTX2/ETC1S albedo + 8 K UASTC normal ≤ 30 MB combined. Download time ≤ 5 s on broadband (50+ Mbps).
 - **Performance**: 60 FPS sustained throughout HD swap-in (no frame drops).
 - **Memory**: Both 2 K and 8 K Texture handles resident during the swap. Release the 2 K Texture once HD is bound.
@@ -127,6 +127,7 @@ Pay down the Phase 0 spike's asset deviations: real NASA SVS Moon textures shipp
 - ADR-0004 (asset strategy — what we're now implementing)
 - ADR-0009 (spike deviations log — what we're paying down)
 - ADR-0010 (CDN host — GitHub Releases)
+- ADR-0011 (Android HD KTX2 deferred — bundled tier ships PNG)
 - `ai-docs/research/moon-assets.md` — full asset catalog + bake / convert workflow
 - `ai-docs/specs/00-renderer-spike/results.md` — handoff state
 - `./plan.md`

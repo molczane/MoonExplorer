@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +21,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
+import org.jetbrains.moonexplorer.assets.MoonAssetLoader
+import org.jetbrains.moonexplorer.assets.StorageDir
+import org.jetbrains.moonexplorer.assets.createMoonHttpClient
 import org.jetbrains.moonexplorer.domain.DEFAULT_FOV_Y_RAD
 import org.jetbrains.moonexplorer.render.MoonViewport
 import org.jetbrains.moonexplorer.state.MoonViewModel
@@ -42,8 +46,17 @@ import org.jetbrains.moonexplorer.state.MoonViewModel
  * proper DI follows in `01-app-shell`.
  */
 @Composable
-fun MoonExplorerScreen(modifier: Modifier = Modifier) {
+fun MoonExplorerScreen(
+    storage: StorageDir,
+    modifier: Modifier = Modifier,
+) {
     val viewModel = remember { MoonViewModel() }
+    val http = remember { createMoonHttpClient() }
+    val loader = remember(storage, http, viewModel) {
+        MoonAssetLoader(storage = storage, http = http, viewModel = viewModel)
+    }
+    LaunchedEffect(loader) { loader.loadInto() }
+
     val state = viewModel.state.collectAsState().value
     var viewportHeightPx by remember { mutableStateOf(0) }
 

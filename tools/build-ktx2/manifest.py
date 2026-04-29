@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""manifest.py — Generate manifest.json describing the HD (8 K) KTX2 tier.
+"""manifest.py — Generate manifest.json describing the HD (8 K) KTX2 + Basis tier.
 
 Schema matches `AssetManifest` (T110) — `Json { ignoreUnknownKeys = true }`-tolerant:
 
@@ -10,11 +10,10 @@ Schema matches `AssetManifest` (T110) — `Json { ignoreUnknownKeys = true }`-to
     }
 
 URLs follow ADR-0010's pattern with an `<owner>/MoonExplorer` placeholder. Search-replace
-the placeholder before T109 (the GH Releases upload).
+the placeholder before the GH Releases upload.
 
 Usage:
-  python3 manifest.py --in-dir .cache --out .cache/manifest.json
-  python3 manifest.py --in-dir .cache --out .cache/manifest.json --owner ernest-molczan --release-tag assets-v1
+  python3 manifest.py --in-dir .cache --out .cache/manifest.json --owner molczane --release-tag assets-v1
 """
 
 from __future__ import annotations

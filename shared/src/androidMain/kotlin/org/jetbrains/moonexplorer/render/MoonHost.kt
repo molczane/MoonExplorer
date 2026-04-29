@@ -33,6 +33,7 @@ import org.jetbrains.moonexplorer.domain.UvSphere
 import org.jetbrains.moonexplorer.domain.cameraPosition
 import org.jetbrains.moonexplorer.domain.cameraUpVector
 import org.jetbrains.moonexplorer.state.MoonRenderState
+import org.jetbrains.moonexplorer.state.TextureSet
 import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -64,10 +65,13 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     private val choreographer: Choreographer = Choreographer.getInstance()
 
     // --- Material + GPU-side asset handles ---
+    // Texture handles flip when state.textureSet advances (Placeholder -> Bundled2K -> Hd8K).
+    // The init block binds 1x1 placeholders; applyTextureSet swaps them for the real bytes
+    // pushed by MoonAssetLoader.
     private val material: Material
     private val materialInstance: MaterialInstance
-    private val albedoTexture: Texture
-    private val normalTexture: Texture
+    private var albedoTexture: Texture
+    private var normalTexture: Texture
     private val albedoSampler: TextureSampler
     private val vertexBuffer: VertexBuffer
     private val indexBuffer: IndexBuffer
@@ -81,6 +85,11 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     // `getInstance` each tick (Phase 3 review #7).
     private var lightInstance: Int = 0
     private var moonTransformInstance: Int = 0
+
+    // Last-applied texture set for the per-frame `applyTextureSet` rebind path.
+    // Reference identity: equality on TextureSet's data classes uses ByteArray identity, so a
+    // new ByteArray (always allocated fresh by the loader on each push) triggers a real rebind.
+    private var lastAppliedTextureSet: TextureSet? = null
 
     // --- State delivered from Compose (read each Choreographer tick) ---
     @Volatile
@@ -100,6 +109,7 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             applyCamera(state)
             applySunDirection(state)
             applyMoonRotation(state)
+            applyTextureSet(state)
 
             if (renderer.beginFrame(sc, frameTimeNanos)) {
                 renderer.render(view)
@@ -113,31 +123,18 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         view.camera = camera
 
         // --- 1. Material + textures ---------------------------------------------------
-        // Phase 0 spike loads tiny bundled assets (~750 KB material + 8 KB PNGs)
-        // synchronously on the UI thread. Acceptable jank budget for a spike;
-        // 02-moon-renderer-mvp will hoist these into a `LaunchedEffect` async load
-        // (Phase 3 review #9, also noted in tasks.md T032).
+        // Material is small (~750 KB) and required before the renderable can be built, so we
+        // still load it synchronously here. Texture loading moved to MoonAssetLoader (T117) +
+        // the per-frame applyTextureSet rebind path; init binds 1x1 placeholders so the
+        // material's samplers are valid until real bytes arrive via state.textureSet.
         val matBytes = runBlocking { Res.readBytes(MATERIAL_PATH) }
         material = Material.Builder()
             .payload(ByteBuffer.wrap(matBytes), matBytes.size)
             .build(engine)
         materialInstance = material.createInstance()
 
-        val albedoBytes = runBlocking { Res.readBytes(ALBEDO_PATH) }
-        val normalBytes = runBlocking { Res.readBytes(NORMAL_PATH) }
-        albedoTexture = uploadTexture(
-            engine = engine,
-            pngBytes = albedoBytes,
-            internalFormat = Texture.InternalFormat.SRGB8_A8,
-        )
-        normalTexture = uploadTexture(
-            engine = engine,
-            pngBytes = normalBytes,
-            internalFormat = Texture.InternalFormat.RGBA8,
-        )
-        // levels(1) below means we ship a single mip; pair with LINEAR (no mipmap chain).
-        // U wraps around longitude; V clamps at the poles. Hoisted to a field so the
-        // texture-set rebind path (T115) reuses the same sampler config.
+        albedoTexture = createPlaceholderTexture(engine, Texture.InternalFormat.SRGB8_A8)
+        normalTexture = createPlaceholderTexture(engine, Texture.InternalFormat.RGBA8)
         albedoSampler = TextureSampler(
             TextureSampler.MinFilter.LINEAR,
             TextureSampler.MagFilter.LINEAR,
@@ -297,6 +294,36 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         engine.transformManager.setTransform(moonTransformInstance, matrix)
     }
 
+    /**
+     * Rebinds the material's `albedo` + `normalMap` samplers when [state.textureSet] differs
+     * from what's currently bound. Decodes PNG bytes via BitmapFactory (Bundled2K — both
+     * platforms per ADR-0011). Hd8K is a no-op on Android — KTX2/Basis transcoding lacks a
+     * Java binding in Filament 1.71.x; deferred to a future spec.
+     */
+    private fun applyTextureSet(state: MoonRenderState) {
+        val ts = state.textureSet
+        if (ts === lastAppliedTextureSet) return
+        when (ts) {
+            is TextureSet.Placeholder -> Unit  // keep the 1x1 placeholders bound
+            is TextureSet.Bundled2K -> {
+                val newAlbedo = uploadTexture(engine, ts.albedoBytes, Texture.InternalFormat.SRGB8_A8)
+                val newNormal = uploadTexture(engine, ts.normalBytes, Texture.InternalFormat.RGBA8)
+                materialInstance.setParameter("albedo", newAlbedo, albedoSampler)
+                materialInstance.setParameter("normalMap", newNormal, albedoSampler)
+                engine.destroyTexture(albedoTexture)
+                engine.destroyTexture(normalTexture)
+                albedoTexture = newAlbedo
+                normalTexture = newNormal
+            }
+            is TextureSet.Hd8K -> {
+                if (lastAppliedTextureSet !is TextureSet.Hd8K) {
+                    println("[MoonHost] HD KTX2 not supported on Android (ADR-0011); staying at Bundled2K.")
+                }
+            }
+        }
+        lastAppliedTextureSet = ts
+    }
+
     private fun updateCameraProjection(width: Int, height: Int) {
         val aspect = width.toDouble() / height.coerceAtLeast(1).toDouble()
         camera.setProjection(
@@ -417,6 +444,30 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     }
 
     /**
+     * 1x1 opaque-black placeholder bound at init so the material's samplers are valid before
+     * MoonAssetLoader's first push lands. Destroyed and replaced when applyTextureSet sees
+     * its first non-Placeholder state.
+     */
+    private fun createPlaceholderTexture(engine: Engine, internalFormat: Texture.InternalFormat): Texture {
+        val texture = Texture.Builder()
+            .width(1)
+            .height(1)
+            .levels(1)
+            .sampler(Texture.Sampler.SAMPLER_2D)
+            .format(internalFormat)
+            .build(engine)
+        val pixel = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder())
+        pixel.put(byteArrayOf(0, 0, 0, 255.toByte()))
+        pixel.flip()
+        texture.setImage(
+            engine,
+            0,
+            Texture.PixelBufferDescriptor(pixel, Texture.Format.RGBA, Texture.Type.UBYTE),
+        )
+        return texture
+    }
+
+    /**
      * Wrap a `ByteArray` in a direct `ByteBuffer`. The `order(nativeOrder())`
      * call is cosmetic for our usage — `put(ByteArray)` copies bytes verbatim
      * and Filament's JNI reads the raw memory directly (no `getFloat()`-style
@@ -450,7 +501,5 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
         const val FAR_PLANE = 100.0
 
         const val MATERIAL_PATH = "files/materials/moon.filamat"
-        const val ALBEDO_PATH = "files/textures/moon_albedo_2k.png"
-        const val NORMAL_PATH = "files/textures/moon_normal_2k.png"
     }
 }
