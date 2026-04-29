@@ -47,6 +47,14 @@ object MoonColors {
     /** Sheet scrim — alpha 0.8 black. Tuned darker than Material's default ~0.32 to obscure
      *  the Moon viewport behind sheets without going pitch-black. */
     val Scrim: Color = Color(0xCC000000)
+
+    /**
+     * Alpha applied to `surface` for `ModalBottomSheet`'s `containerColor` — translucent
+     * dark "glass" feel. T510–T512 / 05-modern-theme. Tune here once; the three sheets
+     * (`AboutSheet`, `SettingsSheet`, `LocationInfoSheet`) all read this via
+     * `MoonModalBottomSheet` in `MoonExplorerTheme.kt`.
+     */
+    const val SHEET_CONTAINER_ALPHA: Float = 0.88f
 }
 
 /**

@@ -13,7 +13,6 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -22,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.jetbrains.moonexplorer.domain.MoonSite
 import org.jetbrains.moonexplorer.domain.SiteType
+import org.jetbrains.moonexplorer.ui.theme.MoonModalBottomSheet
 
 /**
  * T221 — Location info sheet. Material3 ModalBottomSheet shows the chosen [site] with name,
@@ -38,7 +38,7 @@ fun LocationInfoSheet(
     modifier: Modifier = Modifier,
 ) {
     val sheetState = rememberModalBottomSheetState()
-    ModalBottomSheet(
+    MoonModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
         modifier = modifier,

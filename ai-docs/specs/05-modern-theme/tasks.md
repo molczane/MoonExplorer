@@ -37,16 +37,13 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T500+
 
 ## Phase 2: Sheet refresh
 
-- [ ] **T510** [US2] Refresh `AboutSheet`
-  - Pass `containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)`, `scrimColor = MaterialTheme.colorScheme.scrim`, and `shape = MaterialTheme.shapes.extraLarge` to `ModalBottomSheet`.
+- [x] **T510** [US2] Refresh `AboutSheet` — call site swapped from `ModalBottomSheet(...)` to `MoonModalBottomSheet(...)`. The wrapper bakes in `containerColor = surface.copy(alpha = SHEET_CONTAINER_ALPHA)`, `scrimColor = colorScheme.scrim`, and `shape = shapes.extraLarge` so each sheet's call site stays minimal. Pulled the alpha into `MoonColors.SHEET_CONTAINER_ALPHA = 0.88f` so the three sheets share a single tunable knob.
   - _Requirements: FR-006_
 
-- [ ] **T511** [US2] Refresh `SettingsSheet`
-  - Same three parameters passed to `ModalBottomSheet` as T510.
+- [x] **T511** [US2] Refresh `SettingsSheet` — same swap to `MoonModalBottomSheet`. Inherits the translucent surface + tuned scrim + 32 dp top corners automatically.
   - _Requirements: FR-006_
 
-- [ ] **T512** [US2] Refresh `LocationInfoSheet`
-  - Same three parameters passed to `ModalBottomSheet` as T510.
+- [x] **T512** [US2] Refresh `LocationInfoSheet` — same swap. Site title + chips + description now render against the translucent dark surface instead of M3's default opaque grey.
   - _Requirements: FR-006_
 
 **Checkpoint**: opening any sheet shows a translucent dark surface with 32 dp top corners; the Moon viewport behind is visible but darker via the tuned scrim.
