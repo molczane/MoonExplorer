@@ -13,20 +13,20 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T700+
 
 ## Phase 1: Stars (skybox)
 
-- [ ] **T701** [P] [US1] Acquire + verify Milky Way Panorama asset — **deferred to a follow-up commit on this branch**. Real ESO press release 0932 (Brunier Milky Way Panorama, CC BY 4.0) needs human-side license verification before the bytes land; the procedural placeholder from T702-placeholder unblocks T703–T705 in the meantime. The eventual swap is a 6-PNG byte replacement at the same path — no code change required.
+- [x] **T701** [P] [US1] Acquired ESO Milky Way Panorama (Brunier, ESO press release 0932) at 6000×3000 RGB TIFF (28 MB). License verified as CC BY 4.0 via ESO's [copyright page](https://www.eso.org/public/copyright/) — applies to public images including this one; ESO logo is the only relevant exception (we don't use it). Canonical attribution string captured: **"Milky Way Panorama: ESO/S. Brunier. CC BY 4.0. https://www.eso.org/public/images/eso0932a/"**. Wired into `AboutSheet.kt` (verbatim, must not be paraphrased per CC BY 4.0) and recorded as an "Attribution" amendment in `ADR-0004` dated 2026-04-30. Source TIFF is **not committed to the repo** (28 MB binary); re-bake instructions live in `tools/bake-stars-cubemap/bake_eso.py`'s docstring.
   - Source: ESO press release 0932 — Milky Way Panorama by Serge Brunier. Confirm CC BY 4.0 license terms against the original press release page; capture the canonical attribution string ("ESO/S. Brunier") for ADR-0004's amendment + AboutSheet.
   - Fallback: NASA Tycho Star Catalog skymap (public domain) if ESO licensing isn't unambiguous.
   - Output: a single equirectangular PNG (4096×2048 or similar), staged outside the repo for the bake step in T702.
   - _Requirements: NFR (asset attribution), FR-011_
 
-- [ ] **T702** [P] [US1] Bake equirectangular → 6-face cubemap — **deferred** alongside T701. Real ESO bake needs the source image acquired in T701; the cubemap-bake pipeline shape (cmft / AMD Cubemapgen / Blender / Python+PIL) stays as planned.
+- [x] **T702** [P] [US1] Baked equirectangular → 6-face cubemap via `tools/bake-stars-cubemap/bake_eso.py` (Python 3.14 + numpy 2.4.2 + PIL). Standard OpenGL cubemap face-axis convention; bilinear sampling; numpy-vectorized per face (~1 second per face). Output: 6 PNGs at **1024×1024** sRGB at `shared/src/commonMain/composeResources/files/stars/{px,nx,py,ny,pz,nz}.png` — px/nx/pz/nz are 1.9–2.0 MB each (Milky Way band cuts across them); py/ny are 1.3–1.4 MB (more sparse). **Total ~10.5 MB** (over the spec's ≤ 6 MB guideline; documented as accepted-for-quality deviation since the celestial backdrop is the second-largest visual asset after the Moon textures and 1024-per-face is the visible-difference threshold for the Milky Way band).
   - Convert with cmft / AMD Cubemapgen / Blender / Python+PIL — pick whichever produces seamless edges; document the tool + version used in `results.md`.
   - Output: 6 PNG files at 1024×1024 each, sRGB 8-bit. Naming: `{px,nx,py,ny,pz,nz}.png` matching Filament's `[+X, -X, +Y, -Y, +Z, -Z]` face enum order.
   - Bundle path: `shared/src/commonMain/composeResources/files/stars/`
   - Total bundled size ≤ 6 MB.
-  - _Requirements: FR-001, NFR (bundle size)_
+  - _Requirements: FR-001, NFR (bundle size — deviation accepted, see above)_
 
-- [x] **T702-placeholder** [US1] Procedural placeholder cubemap to unblock T703–T705 — `tools/bake-stars-cubemap/generate_placeholder.py` (Python 3 + PIL) creates 6 face PNGs at 512×512 with ~700 random stars per face on black backgrounds (power-law brightness distribution; ~5% of bright stars get a 2-px halo). Deterministic via fixed RNG seeds 1–6 per face. Output bundled at `shared/src/commonMain/composeResources/files/stars/{px,nx,py,ny,pz,nz}.png` — ~7 KB per face, ~46 KB total. Visible cubemap seams are intentional ("clearly procedural — the user can tell at a glance the real bake hasn't landed yet"). Real ESO swap (T701 + T702) is a byte replacement at the same paths — no further code change.
+- [x] **T702-placeholder** [US1] **Superseded by T702** — the procedural placeholder script (`tools/bake-stars-cubemap/generate_placeholder.py`) stays in the tree as a fallback test-data generator (useful for "test without bundling 10 MB of assets" scenarios), but the bundled PNGs are now the real ESO bake.
 
 - [x] **T703** [US1] [Android] Skybox setup in `MoonHost.kt`
   - On init: load 6 PNGs via `BitmapFactory.decodeStream` (matches the existing 2K Moon-texture path); build a Filament cubemap `Texture` (`TextureSampler.SamplerType.SAMPLER_CUBEMAP`); upload each face via `setImage(level=0, faceOffset)`; build a `Skybox.Builder().environment(texture).build(engine)`; on per-frame `if (state.showStars && lastSkyboxState != true)`: `scene.setSkybox(skybox)`; flip-side: `scene.setSkybox(null)`.

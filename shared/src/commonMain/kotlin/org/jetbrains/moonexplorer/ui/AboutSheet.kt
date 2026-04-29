@@ -74,6 +74,21 @@ fun AboutSheet(
             )
             Spacer(Modifier.height(20.dp))
 
+            // T701 / 07-celestial-background. Verbatim per CC BY 4.0 — must not be
+            // paraphrased. Sits next to the NASA SVS line because both are renderable
+            // assets with attribution requirements; ADR-0004 § "Attribution" is the
+            // source of truth.
+            Text(
+                text = "Star imagery",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = ATTRIBUTION_ESO_MILKY_WAY,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(20.dp))
+
             Text(
                 text = "Renderer",
                 style = MaterialTheme.typography.titleMedium,
@@ -132,6 +147,13 @@ private const val ATTRIBUTION_NASA_SVS: String =
     "Lunar surface imagery: NASA's Scientific Visualization Studio, " +
         "\"CGI Moon Kit\" (Ernie Wright / Noah Petro), derived from LRO LROC and " +
         "LOLA data. Public domain. https://svs.gsfc.nasa.gov/4720"
+
+// Verbatim per ADR-0004 § "Attribution" amendment (2026-04-30 via 07-celestial-background).
+// CC BY 4.0 requires the credit string unaltered. The ESO logo is *not* used here — ESO
+// retains rights to the logo separate from the CC BY 4.0 image release.
+private const val ATTRIBUTION_ESO_MILKY_WAY: String =
+    "Milky Way Panorama: ESO/S. Brunier. CC BY 4.0. " +
+        "https://www.eso.org/public/images/eso0932a/"
 
 // Hand-rolled version literals for the spike — BuildKonfig-generated build numbers can land
 // in a polish task. These are honest about what's running.

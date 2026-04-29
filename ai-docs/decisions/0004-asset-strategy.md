@@ -60,6 +60,17 @@ Ship in About / Credits screen:
 
 Per [NASA media usage guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/), commercial use is allowed but the app must not imply NASA endorsement and must not use the NASA insignia/logotype/worm.
 
+**Star imagery (added 2026-04-30 via 07-celestial-background, T701):**
+
+> Milky Way Panorama: ESO/S. Brunier. CC BY 4.0. https://www.eso.org/public/images/eso0932a/
+
+The 6000×3000 equirectangular original (ESO press release 0932) is offline-baked
+into 6 cubemap faces (1024×1024 each, ~10 MB total) by `tools/bake-stars-cubemap/
+bake_eso.py`. CC BY 4.0 requires the credit string verbatim and unaltered; per
+ESO's [copyright page](https://www.eso.org/public/copyright/) the wording above
+is the canonical form. The ESO logo is **not** used (ESO retains rights to it
+separate from the CC BY 4.0 image release).
+
 ## Alternatives rejected
 
 - **Bundle full HD set in app**: 30+ MB above the Play Store warning threshold; texture iteration requires app updates.
