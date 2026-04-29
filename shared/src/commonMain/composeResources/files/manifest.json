@@ -1,14 +1,14 @@
 {
   "version": "2026-04-29-1",
   "albedo": {
-    "url": "https://github.com/<owner>/MoonExplorer/releases/download/assets-v1/moon_albedo_8k.ktx2",
+    "url": "https://github.com/molczane/MoonExplorer/releases/download/assets-v1/moon_albedo_8k.ktx2",
     "sha256": "de88747bdea4258e7e3e1699c16a2998047be3aace6197d5de4257794820337f",
     "sizeBytes": 4656782,
     "width": 8192,
     "height": 4096
   },
   "normal": {
-    "url": "https://github.com/<owner>/MoonExplorer/releases/download/assets-v1/moon_normal_8k.ktx2",
+    "url": "https://github.com/molczane/MoonExplorer/releases/download/assets-v1/moon_normal_8k.ktx2",
     "sha256": "371d3eaaba05c3727bc9dc510dcd8cf15304e22d3e3027d9cb8a443177725cf4",
     "sizeBytes": 23292233,
     "width": 8192,

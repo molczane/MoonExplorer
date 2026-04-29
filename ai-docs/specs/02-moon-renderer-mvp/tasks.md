@@ -63,7 +63,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
   - **Delete** the Phase 0 placeholder PNGs (`moon_albedo_2k.png`, `moon_albedo_2k_alt.png`, `moon_normal_2k.png`).
   - _Requirements: FR-001, NFR bundle-size_
 
-- [ ] **T109** Upload 8 K KTX2 files to the chosen CDN (per ADR-0010)
+- [x] **T109** Upload 8 K KTX2 files to the chosen CDN (per ADR-0010)
   - For GitHub Releases: `gh release create assets-v<n> tools/build-ktx2/.cache/moon_albedo_8k.ktx2 tools/build-ktx2/.cache/moon_normal_8k.ktx2 --notes "..."`.
   - Update `manifest.json` URLs + bundle the manifest.
   - _Requirements: FR-002, ADR-0010_
