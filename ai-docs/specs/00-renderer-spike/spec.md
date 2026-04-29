@@ -103,7 +103,7 @@ Validate that we can render a lit Moon sphere on both Android and iOS using Fila
 - Fly-to animation — Phase 1 (`03-sites-and-flyto`).
 - Sun control beyond a single slider (full joystick, presets, scientific mode) — Phase 1 (`04-sun-control`).
 - Koog AI guide — Phase 3 (`06-koog-agent`).
-- Polish: cinematic camera, label fades, themes, onboarding — Phase 2 (`05-polish`).
+- Polish: cinematic camera, label fades, themes, onboarding — Phase 2 (`05-modern-theme` covers the theme slice; idle camera / labels / favorites / onboarding / app icon / performance pass each become their own future spec).
 
 **Assumptions:**
 - Android development happens on a Mac with Android Studio + AGP 9-compatible toolchain.

@@ -25,7 +25,7 @@ Out of scope (initial release of this phase):
 
 ## Depends on
 
-- `01-app-shell` ... `05-polish` all complete and merged.
+- `01-app-shell` ... `05-modern-theme` all complete and merged.
 - ADR-0005 ratified, `MoonExplorerActions` interface stable.
 
 ## Open questions to resolve at the start of this phase

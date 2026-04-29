@@ -7,7 +7,7 @@ Acceptance criteria for each user story live in `spec.md`.
 
 ## Path conventions
 
-All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T700+** to avoid collision with `00-renderer-spike` (T001–T093), `02-moon-renderer-mvp` (T100–T145), `01-app-shell` (T200–T232), `03-sites-and-flyto` (T301–T342), and `04-sun-control` (T410–T452). The 700 range leaves the 500 / 600 spans for the existing skeleton placeholders (`05-polish` and `06-koog-agent`) when they're picked up.
+All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T700+** to avoid collision with `00-renderer-spike` (T001–T093), `02-moon-renderer-mvp` (T100–T145), `01-app-shell` (T200–T232), `03-sites-and-flyto` (T301–T342), and `04-sun-control` (T410–T452). The 700 range leaves the 500 / 600 spans for the existing skeleton placeholders (`05-polish` — since renamed to `05-modern-theme` — and `06-koog-agent`) when they're picked up.
 
 ---
 

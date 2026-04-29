@@ -334,6 +334,6 @@ The shared state contract (`MoonRenderState`, `MoonViewport`) is locked by Phase
 
 ## Notes
 
-- This is a **spike**. We pay down debt later: real NASA textures (`02-moon-renderer-mvp`), real sun joystick (`04-sun-control`), site markers + fly-to (`01-app-shell` + `03-sites-and-flyto`), polish (`05-polish`), Koog (`06-koog-agent`).
+- This is a **spike**. We pay down debt later: real NASA textures (`02-moon-renderer-mvp`), real sun joystick (`04-sun-control`), site markers + fly-to (`01-app-shell` + `03-sites-and-flyto`), theme polish (`05-modern-theme`; the rest of the original `05-polish` skeleton — idle camera / labels / favorites / onboarding / app icon / performance — split off into future specs), Koog (`06-koog-agent`).
 - If anything in Phase 3 takes more than 2 days per platform, **stop and reconsider the route**. ADR-0002's "Alternatives rejected" section lists fallbacks (route a/b/c/d).
 - Don't relax acceptance criteria silently. If FR-001 (2-second startup) is missed, raise it — don't quietly stretch the budget.

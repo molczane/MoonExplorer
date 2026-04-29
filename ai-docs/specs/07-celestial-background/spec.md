@@ -10,7 +10,7 @@ Replace the renderer's flat-black backdrop with a real celestial backdrop — a 
 
 ## Numbering note
 
-This spec slots in as **07** rather than 05 to leave the existing skeleton placeholders (`05-polish`, `06-koog-agent`) where they are. Time-of-implementation order is `04 → 07 → 05 → 06`; numbering is semantic-group order, not chronological.
+This spec slots in as **07** rather than 05 to leave the existing skeleton placeholders (`05-polish` — since renamed to `05-modern-theme`, `06-koog-agent`) where they are. Time-of-implementation order is `04 → 07 → 05 → 06`; numbering is semantic-group order, not chronological.
 
 ## User Scenarios
 
