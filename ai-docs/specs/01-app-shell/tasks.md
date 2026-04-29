@@ -85,30 +85,30 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T200+
 
 ## Phase 3: UI shell
 
-- [ ] **T220** Implement `ui/SearchBar.kt` in commonMain
+- [x] **T220** Implement `ui/SearchBar.kt` in commonMain
   - Collapsed: 🔍 magnifier icon at TopEnd, `statusBarsPadding()`. Tap expands.
   - Expanded: text field with focus + soft keyboard. Below the field: dropdown with up to 10 result rows (each row: `name`, `subtitle?` in dim text). "No matches" placeholder when query yields zero.
   - State hoisted via `query: String, onQueryChange: (String) -> Unit, results: List<MoonSite>, onResultTap: (MoonSite) -> Unit, onCollapse: () -> Unit`.
   - _Requirements: FR-002, US1 acceptance scenarios_
 
-- [ ] **T221** Implement `ui/LocationInfoSheet.kt` in commonMain
+- [x] **T221** Implement `ui/LocationInfoSheet.kt` in commonMain
   - `@OptIn(ExperimentalMaterial3Api::class)` Material3 `ModalBottomSheet`.
   - Content: site name (headlineSmall), subtitle if present (labelMedium / secondary colour), type chip ("Crater" / "Mare" / "Landing site"), formatted coords (`"43.31° S, 11.36° W"`), description (bodyMedium), `FilledButton("Center on this site")` at the bottom.
   - Drag-down + scrim-tap dismiss are ModalBottomSheet defaults; "Center on this site" stays the sheet open per US3 acceptance scenario.
   - State hoisted: `site: MoonSite, onCenterClick: () -> Unit, onDismissRequest: () -> Unit`.
   - _Requirements: FR-003, FR-004_
 
-- [ ] **T222** Implement `ui/SettingsSheet.kt` in commonMain
+- [x] **T222** Implement `ui/SettingsSheet.kt` in commonMain
   - Material3 `ModalBottomSheet` placeholder. Body: a single `Text("Settings — coming soon")` with `bodyMedium`.
   - `onDismissRequest: () -> Unit`.
   - _Requirements: FR-006_
 
-- [ ] **T223** Modify existing `ui/AboutSheet.kt`
+- [x] **T223** Modify existing `ui/AboutSheet.kt`
   - Add a clickable "Settings" row at the bottom (above the existing reference list). Tap → invoke a new `onSettingsClick: () -> Unit` parameter.
   - The host (`MoonExplorerScreen`) wires that callback to flip a `settingsSheetVisible` flag.
   - _Requirements: FR-006_
 
-- [ ] **T224** Wire the shell into `ui/MoonExplorerScreen.kt`
+- [x] **T224** Wire the shell into `ui/MoonExplorerScreen.kt`
   - Construct the `SiteCatalog` + `MoonExplorerActions` once via `remember { ... }` (or a `LaunchedEffect(Unit) { catalogState.value = SiteCatalog.loadBundled() }` since loading is suspending — see plan.md).
   - State for the search bar, the chosen site (info-sheet target), the about-sheet visibility, the settings-sheet visibility.
   - Layout: `Box { MoonViewport(...); SunControl(...); IconButton(About, TopStart); SearchBar(...); /* info+settings sheets render conditionally */ }`. About → AboutSheet → tap-Settings → SettingsSheet (sequential, never stacked).

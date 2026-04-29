@@ -16,6 +16,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,29 +27,33 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import org.jetbrains.moonexplorer.actions.MoonExplorerActions
+import org.jetbrains.moonexplorer.actions.MoonExplorerActionsImpl
 import org.jetbrains.moonexplorer.assets.MoonAssetLoader
 import org.jetbrains.moonexplorer.assets.StorageDir
 import org.jetbrains.moonexplorer.assets.createMoonHttpClient
 import org.jetbrains.moonexplorer.domain.DEFAULT_FOV_Y_RAD
+import org.jetbrains.moonexplorer.domain.MoonSite
+import org.jetbrains.moonexplorer.domain.SiteCatalog
 import org.jetbrains.moonexplorer.render.MoonViewport
 import org.jetbrains.moonexplorer.state.MoonViewModel
 
 /**
- * Top-level Moon Explorer screen: hosts the platform renderer (MoonViewport),
- * the placeholder sun control (T017), and (Phase 4 T041) the touch gesture
- * surface that drives the orbit camera.
+ * Top-level Moon Explorer screen. Hosts the platform renderer, gestures, sun control, and —
+ * since 01-app-shell — the search affordance, location info sheet, About / Settings stack.
  *
- * Gesture wiring (T041): `Modifier.pointerInput { detectTransformGestures { ... } }`
- * on the viewport routes drag pan into `viewModel.onDrag` and pinch zoom into
- * `viewModel.onPinch`. The viewport's pixel height is captured via
- * `Modifier.onSizeChanged` so the zoom-aware pixel-to-radian sensitivity math
- * (selenographic-math-camera.md §4) calibrates against the actual viewport.
+ * Two flow rules from FR-005:
+ *   - **Continuous gesture inputs** (`pointerInput { detectTransformGestures { ... } }`) call
+ *     `viewModel.onDrag/onPinch` directly. They're not commands; ADR-0005's
+ *     `MoonExplorerActions` deliberately doesn't include them.
+ *   - **Discrete commands** (search result tap, "Center on this site") flow through
+ *     `MoonExplorerActions`. The impl serialises side-effecting calls with a Mutex so a
+ *     concurrent Phase-3 Koog tool dispatch can't race the UI.
  *
- * State propagates back to the renderer via the StateFlow snapshot the
- * platform host pulls per frame (ADR-0003 pull-not-push).
- *
- * The MoonViewModel is created per composition via `remember` for the spike;
- * proper DI follows in `01-app-shell`.
+ * Sheet state machine: About → AboutSheet. AboutSheet's "Settings" row closes About and
+ * opens SettingsSheet (sequential, never stacked). LocationInfoSheet is independent —
+ * triggered by a search-result tap.
  */
 @Composable
 fun MoonExplorerScreen(
@@ -62,9 +67,33 @@ fun MoonExplorerScreen(
     }
     LaunchedEffect(loader) { loader.loadInto() }
 
+    // T224 — site catalog + actions surface (ADR-0005). loadBundled is suspending, so the
+    // action impl flips from null to non-null once the JSON parse completes (a frame or two
+    // after first composition). Search/Center handlers null-guard until then.
+    var actions: MoonExplorerActions? by remember { mutableStateOf(null) }
+    LaunchedEffect(viewModel) {
+        val catalog = SiteCatalog.loadBundled()
+        actions = MoonExplorerActionsImpl(viewModel = viewModel, catalog = catalog)
+    }
+    val scope = rememberCoroutineScope()
+
     val state = viewModel.state.collectAsState().value
     var viewportHeightPx by remember { mutableStateOf(0) }
+
     var aboutSheetVisible by remember { mutableStateOf(false) }
+    var settingsSheetVisible by remember { mutableStateOf(false) }
+
+    var searchExpanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf(emptyList<MoonSite>()) }
+    var infoSheetSite: MoonSite? by remember { mutableStateOf(null) }
+
+    // Re-run search whenever the query changes (or when actions becomes non-null after the
+    // catalog finishes loading). MoonExplorerActionsImpl.searchMoonLocations is read-only
+    // and skips the Mutex, so this can fire freely on every keystroke.
+    LaunchedEffect(searchQuery, actions) {
+        searchResults = actions?.searchMoonLocations(searchQuery) ?: emptyList()
+    }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         MoonViewport(
@@ -73,10 +102,6 @@ fun MoonExplorerScreen(
                 .fillMaxSize()
                 .onSizeChanged { size -> viewportHeightPx = size.height }
                 .pointerInput(Unit) {
-                    // Compose's transform-gesture detector emits incremental
-                    // pan/zoom/rotation deltas; we ignore rotation (the orbit
-                    // camera doesn't roll). pan is in pixels, zoom is a
-                    // multiplicative factor (1.0 = no change, >1 = pinch out).
                     detectTransformGestures(panZoomLock = false) { _, pan, zoom, _ ->
                         if (pan != Offset.Zero && viewportHeightPx > 0) {
                             viewModel.onDrag(
@@ -95,18 +120,12 @@ fun MoonExplorerScreen(
         SunControl(
             value = state.sunDirection.x,
             onValueChange = { x -> viewModel.setSunDirection(joystickToHemisphereDir(x)) },
-            // navigationBarsPadding() pushes the slider above the iOS home
-            // indicator and the Android gesture-nav bar; the viewport stays
-            // edge-to-edge (background bleeds behind the system UI).
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(16.dp),
         )
-        // About / Credits affordance (T131). statusBarsPadding() keeps the hit-target clear
-        // of the iOS notch / Dynamic Island and the Android status bar — the spike's Phase 6
-        // toggle taught us this the hard way (commit d0bd48a).
         IconButton(
             onClick = { aboutSheetVisible = true },
             modifier = Modifier
@@ -121,9 +140,54 @@ fun MoonExplorerScreen(
                 textAlign = TextAlign.Center,
             )
         }
+        SearchBar(
+            expanded = searchExpanded,
+            onExpandedChange = { value ->
+                searchExpanded = value
+                if (!value) searchQuery = ""  // collapse clears the field per the edge-cases section
+            },
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            results = searchResults,
+            onResultTap = { site ->
+                infoSheetSite = site
+                searchExpanded = false
+                searchQuery = ""
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(8.dp),
+        )
+    }
+
+    val site = infoSheetSite
+    if (site != null) {
+        LocationInfoSheet(
+            site = site,
+            onCenterClick = {
+                actions?.let { a ->
+                    // flyToMoonLocation is suspend; dispatch through the screen's scope so
+                    // the click handler returns immediately. The Mutex inside the impl
+                    // serialises against any other concurrent action.
+                    scope.launch { a.flyToMoonLocation(site.id) }
+                }
+            },
+            onDismissRequest = { infoSheetSite = null },
+        )
     }
 
     if (aboutSheetVisible) {
-        AboutSheet(onDismissRequest = { aboutSheetVisible = false })
+        AboutSheet(
+            onDismissRequest = { aboutSheetVisible = false },
+            onSettingsClick = {
+                aboutSheetVisible = false
+                settingsSheetVisible = true
+            },
+        )
+    }
+
+    if (settingsSheetVisible) {
+        SettingsSheet(onDismissRequest = { settingsSheetVisible = false })
     }
 }

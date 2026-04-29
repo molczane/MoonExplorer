@@ -1,6 +1,9 @@
 package org.jetbrains.moonexplorer.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -9,11 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -30,6 +35,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AboutSheet(
     onDismissRequest: () -> Unit,
+    onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -96,7 +102,26 @@ fun AboutSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
+
+            HorizontalDivider()
+
+            // T223 — Settings entry. Tapping closes the About sheet (the host flips
+            // aboutSheetVisible to false) and opens SettingsSheet. Sequential, never stacked,
+            // matching the host's state-machine wiring in T224.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onSettingsClick)
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = "Settings", style = MaterialTheme.typography.titleMedium)
+                Text(text = "→", style = MaterialTheme.typography.titleMedium)
+            }
+
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
