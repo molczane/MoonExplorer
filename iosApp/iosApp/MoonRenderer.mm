@@ -301,6 +301,12 @@ constexpr float kSunEmissiveIntensity = 5.0f;
     BOOL _showSun;
     BOOL _sunBillboardAttached;
 
+    // T721 / 07-celestial-background — bloom config. enabled tracks _showSun;
+    // _lastBloomEnabled dedups setBloomOptions calls so only toggle changes
+    // re-push the struct to Filament.
+    View::BloomOptions _bloomOptions;
+    BOOL _lastBloomEnabled;
+
     // Cached state. **All access is on the main thread** — both the setters
     // (called from Compose's `update` lambda via the Kotlin `MoonRendererProvider`
     // closures) and the reader (`renderloop`, driven by CADisplayLink on the
@@ -336,6 +342,7 @@ constexpr float kSunEmissiveIntensity = 5.0f;
     _sunMaterialBuilt = NO;
     _showSun = YES;          // matches MoonRenderState default
     _sunBillboardAttached = NO;
+    _lastBloomEnabled = NO;
     _lastAlbedoPtr = nullptr;
     _lastAlbedoLen = 0;
     _lastNormalPtr = nullptr;
@@ -376,6 +383,23 @@ constexpr float kSunEmissiveIntensity = 5.0f;
     // but stating them protects against future Filament default changes.
     _camera->setExposure(16.0f, 1.0f / 125.0f, 100.0f);
     _view->setCamera(_camera);
+
+    // T721 / 07-celestial-background — bloom config. Threshold-based highpass so
+    // only the sun's HDR-bright pixels (intensity 5) bloom; the Moon's max
+    // reflective output stays at the cusp and contributes minimally. enabled
+    // starts NO; the first applyShowSun: call from the Compose recomp flips it
+    // to YES via _lastBloomEnabled dedup.
+    _bloomOptions.enabled = false;
+    _bloomOptions.threshold = true;
+    _bloomOptions.strength = 0.5f;
+    _bloomOptions.resolution = 360;
+    _bloomOptions.levels = 6;
+    _bloomOptions.blendMode = View::BloomOptions::BlendMode::ADD;
+    _bloomOptions.lensFlare = false;
+    _bloomOptions.starburst = false;
+    _bloomOptions.chromaticAberration = 0.0f;
+    _bloomOptions.ghostCount = 0;
+    _view->setBloomOptions(_bloomOptions);
 
     // Initial viewport matches the CAMetalLayer drawable size; resize:
     // updates this whenever the host UIView's bounds change.
@@ -776,7 +800,19 @@ constexpr float kSunEmissiveIntensity = 5.0f;
 
 - (void)setShowSun:(BOOL)show {
     _showSun = show;
-    if (_engine == nullptr || _scene == nullptr || !_sunMaterialBuilt) return;
+    if (_engine == nullptr) return;
+
+    // Bloom toggle (T721). Dedup against the last-pushed enabled flag so we only
+    // pay the setBloomOptions call when the user actually toggles.
+    if (_view != nullptr && show != _lastBloomEnabled) {
+        _bloomOptions.enabled = show;
+        _view->setBloomOptions(_bloomOptions);
+        _lastBloomEnabled = show;
+    }
+
+    // Sun billboard attach toggle (T713). Only act if the material has been built;
+    // otherwise loadSunMaterial: will pick up the latest _showSun at attach time.
+    if (_scene == nullptr || !_sunMaterialBuilt) return;
     if (show && !_sunBillboardAttached) {
         _scene->addEntity(_sunBillboardEntity);
         _sunBillboardAttached = YES;

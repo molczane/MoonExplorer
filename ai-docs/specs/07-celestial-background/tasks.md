@@ -86,15 +86,15 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T700+
 
 ## Phase 3: Bloom
 
-- [ ] **T720** [US3] [Android] `view.setBloomOptions(...)` in `MoonHost.kt`
+- [x] **T720** [US3] [Android] `view.setBloomOptions(...)` in `MoonHost.kt` — `View.BloomOptions` configured once in init with `threshold = true` (highpass), `strength = 0.5f`, `resolution = 360`, `levels = 6`, `blendMode = ADD`, and lens-flare-style effects (`lensFlare`, `starburst`, `chromaticAberration`, `ghostCount`) explicitly disabled. `enabled` flag tracks `state.showSun`: per-frame `applyBloom(state)` dedups against `lastBloomEnabled` and only re-pushes the struct when the user toggles. Saves the highpass + Gaussian blur post-FX cost when the sun is hidden.
   - On init or per-frame (whichever Filament prefers — usually init + reconfigure on toggle): construct `BloomOptions { enabled = state.showSun; strength = 0.5f; resolution = 360; levels = 6; threshold = true; blendMode = ADD }`. Call `view.setBloomOptions(options)`.
   - _Requirements: FR-007, FR-008_
 
-- [ ] **T721** [US3] [iOS] `view->setBloomOptions(...)` in `MoonRenderer.mm`
+- [x] **T721** [US3] [iOS] `view->setBloomOptions(...)` in `MoonRenderer.mm` — `View::BloomOptions _bloomOptions` instance member configured at init with the same values as Android (threshold-based, strength 0.5, resolution 360, levels 6, ADD blend, lens-flare-style effects off). Push happens at init (with `enabled = false`) and again from `setShowSun:` on toggle change with `_lastBloomEnabled` dedup. Symmetric with the Android pattern.
   - Same struct, same values. Filament's iOS API is C++ matching the Java binding 1:1.
   - _Requirements: FR-007, FR-008_
 
-- [ ] **T722** [US3] Tune sun emissive intensity vs bloom threshold — empirical
+- [ ] **T722** [US3] Tune sun emissive intensity vs bloom threshold — **hardware-bound**, deferred. Phase 3 lands the initial values: `SUN_EMISSIVE_INTENSITY = 5f` (set on the sun.filamat MaterialInstance) + bloom threshold-true + bloom strength 0.5. T722 confirms on Pixel 6 / iPhone 12 that the sun blooms cleanly across the joystick range + 4 lighting presets while the Moon's lit edge stays sharp; adjusts the constants if either side leaks past the bloom threshold. Final tuned values are recorded in `results.md` (T741).
   - Hardware test: confirm sun blooms cleanly across the joystick range + 4 lighting presets; confirm Moon's lit edge does NOT bloom at any orientation. Adjust `SUN_EMISSIVE_INTENSITY` (T714 constant) up if the disc's bloom is faint, down if Moon highlights leak past threshold.
   - Document the final tuned value + the rationale in `results.md`.
   - _Requirements: FR-007 (clean separation), SC-003_

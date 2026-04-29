@@ -108,6 +108,30 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
     private var sunTransformInstance: Int = 0
     private var lastShowSun: Boolean = false  // init attaches if default true
 
+    // T720 / 07-celestial-background — bloom config. Tracks state.showSun: enabled
+    // when sun is visible, disabled otherwise (saves the post-FX pass cost when
+    // there's no bright pixel to bloom). All other parameters are configured once
+    // in init; only `enabled` flips at runtime.
+    private val sunBloomOptions: View.BloomOptions = View.BloomOptions().apply {
+        // Threshold-based: only HDR pixels above ~1.0 contribute. Sun's emissive
+        // intensity (5.0) is well above the threshold; Moon's reflective max
+        // (~1.0 with the directional light + camera exposure) sits at the cusp.
+        threshold = true
+        strength = 0.5f
+        resolution = 360
+        levels = 6
+        blendMode = View.BloomOptions.BlendMode.ADD
+        // Disable lens-flare-style effects — the sun glow is intended as soft
+        // bloom, not a stylized solar lens flare. Phase 3 / T720 / 07-celestial-
+        // background.
+        lensFlare = false
+        starburst = false
+        chromaticAberration = 0f
+        ghostCount = 0
+        enabled = false  // init pushes; lastBloomEnabled flip on first frame turns it on
+    }
+    private var lastBloomEnabled: Boolean = false
+
     // Last-applied texture set for the per-frame `applyTextureSet` rebind path.
     // Reference identity: equality on TextureSet's data classes uses ByteArray identity, so a
     // new ByteArray (always allocated fresh by the loader on each push) triggers a real rebind.
@@ -134,6 +158,7 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             applyTextureSet(state)
             applyShowStars(state)
             applySunBillboard(state)
+            applyBloom(state)
 
             if (renderer.beginFrame(sc, frameTimeNanos)) {
                 renderer.render(view)
@@ -248,6 +273,10 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             clear = true
             clearColor = floatArrayOf(0f, 0f, 0f, 1f)
         }
+
+        // Push the bloom config once. enabled stays false here; the first
+        // applyBloom() tick flips it to match state.showSun. T720.
+        view.setBloomOptions(sunBloomOptions)
 
         // Initial camera projection — refined when the surface is sized.
         val width = surfaceView.width.coerceAtLeast(1)
@@ -440,6 +469,19 @@ internal class MoonHost(private val surfaceView: SurfaceView) : DefaultLifecycle
             sunPosX, sunPosY, sunPosZ, 1f,
         )
         engine.transformManager.setTransform(sunTransformInstance, matrix)
+    }
+
+    /**
+     * Toggle Filament's bloom post-FX pass to track [state.showSun]. T720 /
+     * 07-celestial-background. The cost saved when the sun is hidden is one full-
+     * screen highpass + Gaussian blur pass — non-trivial on low-end Android. All
+     * other bloom parameters were configured once in init; only `enabled` flips.
+     */
+    private fun applyBloom(state: MoonRenderState) {
+        if (state.showSun == lastBloomEnabled) return
+        sunBloomOptions.enabled = state.showSun
+        view.setBloomOptions(sunBloomOptions)
+        lastBloomEnabled = state.showSun
     }
 
     private fun applyTextureSet(state: MoonRenderState) {
