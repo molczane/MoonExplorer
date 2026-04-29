@@ -604,7 +604,8 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
     // photons travel (away from the source), so negate the lit-from vector.
     // Phase 3 review #10: dropped the defensive normalization step — the
     // shared MoonViewModel only emits unit-length sun directions
-    // (joystickToHemisphereDir lifts onto the unit hemisphere).
+    // (joystickToSunDir clamps onto the unit hemisphere; lerpSunDirection
+    // reconstructs unit-length via latLonToCartesian).
     if (_sunEntity) {
         auto& lcm = _engine->getLightManager();
         auto inst = lcm.getInstance(_sunEntity);

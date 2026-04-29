@@ -115,13 +115,13 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T400+
 
 ## Phase 4: MoonExplorerScreen swap-in
 
-- [ ] **T440** [US1, US2, US3, US4] Replace `SunControl` with `SunPanel` in `MoonExplorerScreen`
+- [x] **T440** [US1, US2, US3, US4] Replace `SunControl` with `SunPanel` in `MoonExplorerScreen` — `SunPanel` block at BottomCenter wired with `onJoystickDrag = { x, y -> viewModel.setSunDirection(joystickToSunDir(x, y)) }` (continuous-gesture path direct to the viewmodel) and `onPresetTap = { preset -> currentLightingJob?.cancel(); currentLightingJob = scope.launch { actions?.setLightingPreset(preset) } }` (discrete command through ADR-0005's surface, with the same cancel-then-launch hand-off pattern as `currentFlyJob`). Dropped the unused `fillMaxWidth` import; removed the `@Suppress("unused")` from `currentLightingJob` (now read + written).
   - Delete the current `SunControl(value = state.sunDirection.x, onValueChange = { … }, …)` block at BottomCenter.
   - Replace with `SunPanel(sunDirection = state.sunDirection, onJoystickDrag = { x, y -> viewModel.setSunDirection(joystickToSunDir(x, y)) }, onPresetTap = { preset -> currentLightingJob?.cancel(); currentLightingJob = scope.launch { actions?.setLightingPreset(preset) } }, modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp))`.
   - Confirm the screen still compiles + previews; sun direction visibly responds to both joystick drag and preset taps when launched.
   - _Requirements: FR-001, FR-003, FR-005, FR-009_
 
-- [ ] **T441** Delete `ui/SunControl.kt`
+- [x] **T441** Delete `ui/SunControl.kt` — file removed. Also fixed a stale `joystickToHemisphereDir` reference in `iosApp/iosApp/MoonRenderer.mm:607` (a code comment, not a runtime dep) so the historical-context note still points to a function that exists. `grep -r SunControl shared/ androidApp/ iosApp/` returns only kdoc/historical-comment hits in `SunPanel.kt` and `MoonMath.kt` — no live references.
   - The whole file is superseded. `joystickToHemisphereDir(x)` is replaced by `joystickToSunDir(x, y)` in MoonMath; `SunControl` is replaced by `SunPanel`. Removing the file in the same commit prevents stale imports.
   - Confirm no remaining imports of `SunControl` or `joystickToHemisphereDir` anywhere in the tree (`grep -r SunControl shared/ androidApp/ iosApp/`).
   - _Requirements: cleanliness; no FR_

@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -37,6 +36,7 @@ import org.jetbrains.moonexplorer.assets.createMoonHttpClient
 import org.jetbrains.moonexplorer.domain.DEFAULT_FOV_Y_RAD
 import org.jetbrains.moonexplorer.domain.MoonSite
 import org.jetbrains.moonexplorer.domain.SiteCatalog
+import org.jetbrains.moonexplorer.domain.joystickToSunDir
 import org.jetbrains.moonexplorer.render.MoonViewport
 import org.jetbrains.moonexplorer.state.MoonViewModel
 // MarkerOverlay is in the same package — no import needed.
@@ -98,10 +98,9 @@ fun MoonExplorerScreen(
 
     // T433 / 04-sun-control — the same cancel-then-launch tracker for the animated
     // setLightingPreset path. Declared here so the screen owns the Job lifetime; the
-    // SunPanel's onPresetTap callback (T440) calls cancel + relaunch. Independent of
+    // SunPanel's onPresetTap callback calls cancel + relaunch. Independent of
     // currentFlyJob so a fly-to and a sun-preset transition can run concurrently —
     // each cancels only its own track on a new tap.
-    @Suppress("unused")  // T440 (Phase 4) wires the read/write; declared in T433 for ordering
     var currentLightingJob: Job? by remember { mutableStateOf<Job?>(null) }
 
     var searchExpanded by remember { mutableStateOf(false) }
@@ -152,12 +151,28 @@ fun MoonExplorerScreen(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        SunControl(
-            value = state.sunDirection.x,
-            onValueChange = { x -> viewModel.setSunDirection(joystickToHemisphereDir(x)) },
+        // T440 / 04-sun-control. Replaces 01-shell's 1-axis SunControl slider with the
+        // 2D joystick + 4-preset grid. Two side-effect tracks per spec.md / plan.md:
+        //   • Joystick drag = continuous gesture → viewModel.setSunDirection direct
+        //     (mirrors onDrag/onPinch from 02-mvp; bypasses MoonExplorerActions because
+        //     gestures aren't commands).
+        //   • Preset tap = discrete command → MoonExplorerActions.setLightingPreset
+        //     animates over 500 ms; currentLightingJob.cancel-then-launch interrupts a
+        //     prior in-flight animation cleanly so the new tap starts from the *current*
+        //     state (US3's "fluid hand-off" feel).
+        SunPanel(
+            sunDirection = state.sunDirection,
+            onJoystickDrag = { x, y ->
+                viewModel.setSunDirection(joystickToSunDir(x, y))
+            },
+            onPresetTap = { preset ->
+                actions?.let { a ->
+                    currentLightingJob?.cancel()
+                    currentLightingJob = scope.launch { a.setLightingPreset(preset) }
+                }
+            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(16.dp),
         )
