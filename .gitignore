@@ -22,3 +22,4 @@ out/
 *.hprof
 **/Pods/
 tools/matc/
+tools/build-ktx2/.cache/

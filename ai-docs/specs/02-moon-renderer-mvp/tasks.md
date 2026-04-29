@@ -13,7 +13,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
 
 ## Phase 1: Setup + asset prep (one-off, dev-side)
 
-- [ ] **T101** [P] Add Ktor + kotlinx-serialization to `gradle/libs.versions.toml` and `shared/build.gradle.kts`
+- [x] **T101** [P] Add Ktor + kotlinx-serialization to `gradle/libs.versions.toml` and `shared/build.gradle.kts`
   - Versions: Ktor `3.2.x` (latest stable for Kotlin 2.3.x), kotlinx-serialization `1.10.x`.
   - Modules: `ktor-client-core`, `ktor-client-content-negotiation`, `ktor-serialization-kotlinx-json` in `commonMain`; `ktor-client-okhttp` in `androidMain`; `ktor-client-darwin` in `iosMain`.
   - Apply `kotlin("plugin.serialization")` to `:shared`.
@@ -26,7 +26,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
   - **Block T109 / T120 on this ADR landing.**
   - _Requirements: ADR-0004, FR-002_
 
-- [ ] **T103** [P] Author `tools/bake-normal-map/bake.py` (Python + NumPy + PIL)
+- [x] **T103** [P] Author `tools/bake-normal-map/bake.py` (Python + NumPy + PIL)
   - Reads `ldem_16_uint.tif` (5760×2880, 16-bit unsigned half-meters per `moon-assets.md`).
   - Central-difference of elevation in spherical coordinates + `cos(latitude)` correction for equirectangular distortion at the poles.
   - Normalize, pack `(nx, ny, nz)` → `(R, G, B)` via `(x*0.5+0.5)`.
@@ -34,14 +34,14 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T100+
   - `tools/bake-normal-map/README.md` documents inputs / outputs / commands.
   - _Requirements: FR-001, FR-008_
 
-- [ ] **T104** [P] Download NASA SVS source TIFFs
+- [x] **T104** [P] Download NASA SVS source TIFFs
   - `lroc_color_poles_8k.tif` (8192×4096, 48 MB) — albedo source.
   - `ldem_16_uint.tif` (5760×2880, 31.7 MB) — elevation source for normal-map bake.
   - Direct URLs in `ai-docs/research/moon-assets.md` §2.
   - **Don't commit these** — they're upstream sources that the bake / build steps consume; document their cache location under `tools/build-ktx2/.cache/` (gitignored).
   - _Requirements: ADR-0004_
 
-- [ ] **T105** Run `tools/bake-normal-map/bake.py` against the LDEM TIFF
+- [x] **T105** Run `tools/bake-normal-map/bake.py` against the LDEM TIFF
   - Produces `moon_normal_2k.png` and `moon_normal_8k.png` under `tools/build-ktx2/.cache/`.
   - _Requirements: FR-001, FR-008_
 
