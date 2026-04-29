@@ -54,7 +54,7 @@ T145 record of what shipped, what's user-confirmed on hardware, and what's still
 - **FPS** on Pixel 6 + iPhone 12 (steady state + during HD swap-in on iOS) — Android Studio Profiler or Xcode Frame Capture.
 - **HD swap-in latency on iOS, broadband Wi-Fi** — clock from `[MoonAssetLoader] HD bound` console line back to first frame after launch.
 - **Visual sanity of HD vs 2 K transition on iOS** — does the moon visibly sharpen, no flicker, no Engine teardown stutter?
-- **About sheet usability** — drag-down dismiss, scrim-tap dismiss, attribution string readability under both light + dark Material themes.
+- **About sheet usability** — drag-down dismiss, scrim-tap dismiss, attribution string readability under both light + dark Material themes. *01-app-shell extended `AboutSheet` with a Settings row that opens a placeholder `SettingsSheet`; co-locate this check with [`../01-app-shell/results.md`](../01-app-shell/results.md) § "Pending hardware measurements".*
 
 ## References
 

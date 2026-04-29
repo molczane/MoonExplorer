@@ -125,15 +125,15 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T200+
 
 ## Phase Final: Polish + tests + docs
 
-- [ ] **T230** Run `:shared:testAndroidHostTest :shared:iosSimulatorArm64Test` and confirm green
+- [x] **T230** Run `:shared:testAndroidHostTest :shared:iosSimulatorArm64Test` and confirm green — 56 tests across 9 suites green on Android JVM + iOS simulator-arm64.
   - All existing tests + new `SiteCatalogTest` + new `MoonExplorerActionsImplTest` pass on both platforms.
   - _Requirements: SC-006_
 
-- [ ] **T231** [P] Write `ai-docs/specs/01-app-shell/results.md`
+- [x] **T231** [P] Write `ai-docs/specs/01-app-shell/results.md`
   - Status by phase; user-confirmed items; pending hardware confirmation; deferred items (UI tests; animated fly-to).
   - _Requirements: agent-runbook.md_
 
-- [ ] **T232** [P] Update `ai-docs/specs/02-moon-renderer-mvp/results.md` § "Pending hardware measurements"
+- [x] **T232** [P] Update `ai-docs/specs/02-moon-renderer-mvp/results.md` § "Pending hardware measurements"
   - Cross-reference `01-app-shell` if any 02-mvp deferred items got picked up here (e.g., About-sheet UX validation now exercised through the new Settings row).
   - _Requirements: agent-runbook.md_
 
