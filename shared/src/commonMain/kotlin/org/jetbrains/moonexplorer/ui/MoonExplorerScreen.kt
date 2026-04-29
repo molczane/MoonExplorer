@@ -38,6 +38,7 @@ import org.jetbrains.moonexplorer.domain.MoonSite
 import org.jetbrains.moonexplorer.domain.SiteCatalog
 import org.jetbrains.moonexplorer.render.MoonViewport
 import org.jetbrains.moonexplorer.state.MoonViewModel
+// MarkerOverlay is in the same package — no import needed.
 
 /**
  * Top-level Moon Explorer screen. Hosts the platform renderer, gestures, sun control, and —
@@ -68,12 +69,16 @@ fun MoonExplorerScreen(
     LaunchedEffect(loader) { loader.loadInto() }
 
     // T224 — site catalog + actions surface (ADR-0005). loadBundled is suspending, so the
-    // action impl flips from null to non-null once the JSON parse completes (a frame or two
-    // after first composition). Search/Center handlers null-guard until then.
+    // catalog and action impl flip from null to non-null once the JSON parse completes (a
+    // frame or two after first composition). Search/Center handlers + MarkerOverlay (T311)
+    // null-guard until then. The catalog is hoisted alongside `actions` so MarkerOverlay can
+    // read `catalog.all` directly without round-tripping through MoonExplorerActions.
+    var catalog: SiteCatalog? by remember { mutableStateOf(null) }
     var actions: MoonExplorerActions? by remember { mutableStateOf(null) }
     LaunchedEffect(viewModel) {
-        val catalog = SiteCatalog.loadBundled()
-        actions = MoonExplorerActionsImpl(viewModel = viewModel, catalog = catalog)
+        val c = SiteCatalog.loadBundled()
+        catalog = c
+        actions = MoonExplorerActionsImpl(viewModel = viewModel, catalog = c)
     }
     val scope = rememberCoroutineScope()
 
@@ -117,6 +122,20 @@ fun MoonExplorerScreen(
                     }
                 },
         )
+        // T311 — site markers. Overlay sits above the viewport but only the marker dots
+        // consume taps; bare overlay area falls through to the viewport's gesture detector.
+        // While the catalog is still loading, the let-block doesn't render anything.
+        catalog?.let { c ->
+            MarkerOverlay(
+                sites = c.all,
+                cameraYawRad = state.cameraYawRad,
+                cameraPitchRad = state.cameraPitchRad,
+                cameraDistance = state.cameraDistance,
+                highlightedSiteId = state.highlightedSiteId,
+                onMarkerTap = { id -> infoSheetSite = c.byId(id) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         SunControl(
             value = state.sunDirection.x,
             onValueChange = { x -> viewModel.setSunDirection(joystickToHemisphereDir(x)) },

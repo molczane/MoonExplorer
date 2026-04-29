@@ -36,7 +36,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T300+
 
 ## Phase 2: Marker overlay (UI)
 
-- [ ] **T310** [US1, US3, US4] Implement `ui/MarkerOverlay.kt` in commonMain
+- [x] **T310** [US1, US3, US4] Implement `ui/MarkerOverlay.kt` in commonMain — Box overlay captures viewport via `onSizeChanged`; per-site `projectSiteToScreen` filters far-side markers; visible markers render as 14-dp white dots (22 dp accent fill when highlighted) with a 48-dp invisible tap target around each, alpha = limbAlpha. Bare overlay area has no pointer modifier so taps fall through to the underlying viewport gesture detector.
   - `@Composable fun MarkerOverlay(sites, cameraYawRad, cameraPitchRad, cameraDistance, highlightedSiteId, onMarkerTap, modifier)`.
   - Captures viewport size via `Modifier.onSizeChanged`. While viewport is 0×0, render nothing.
   - For each site: call `projectSiteToScreen`. Visible (non-null) markers render as `Surface(shape = CircleShape)` with `Modifier.offset { IntOffset(xPx.toInt(), yPx.toInt()) }` and `Modifier.size(if (highlighted) 24.dp else 14.dp)`. Highlighted variant uses an accent fill.
@@ -44,7 +44,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T300+
   - `derivedStateOf` wrap around the projection computation so we don't recompose every keystroke.
   - _Requirements: FR-001, FR-002, FR-007, FR-008_
 
-- [ ] **T311** [US1] Wire `MarkerOverlay` into `MoonExplorerScreen`
+- [x] **T311** [US1] Wire `MarkerOverlay` into `MoonExplorerScreen` — hoisted `catalog: SiteCatalog?` alongside `actions` so the overlay reads `catalog.all` directly without round-tripping through MoonExplorerActions. Overlay sits in the Box between `MoonViewport` and `SunControl`; `onMarkerTap` sets `infoSheetSite = catalog.byId(id)`. Conditional render via `catalog?.let { ... }` so the overlay is invisible until the JSON parse completes.
   - Drop in the overlay between `MoonViewport` and `SunControl` in the existing `Box`. Pass `state.cameraYaw/Pitch/Distance`, `state.highlightedSiteId`, and a `onMarkerTap` callback that sets `infoSheetSite = catalog.byId(id)`.
   - Catalog source: re-use the `actions` instance's catalog. Stash the catalog at `MoonExplorerScreen` level so the overlay doesn't have to round-trip through `MoonExplorerActions`. (Or expose `actions.allSites()` — out of ADR-0005 scope; cleaner to thread the catalog directly.)
   - Verify the overlay's tap handlers don't break the existing pan/pinch on the empty Moon — Compose's pointer dispatch should handle it; on-device confirmation is in T350.
