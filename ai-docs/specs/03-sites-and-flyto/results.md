@@ -75,4 +75,5 @@ The spec is code-complete; everything below needs an on-device session to confir
 - [`../../research/selenographic-math-camera.md`](../../research/selenographic-math-camera.md) §1, §5, §7 — projection + animation + culling math
 - [`../01-app-shell/results.md`](../01-app-shell/results.md) — predecessor results (search + info sheet + actions surface; snap-to fly-to placeholder)
 - [`../02-moon-renderer-mvp/results.md`](../02-moon-renderer-mvp/results.md) — renderer baseline (textures, FOV)
+- [`../04-sun-control/results.md`](../04-sun-control/results.md) — successor spec — reuses 03's TimeSource + cancellable-delay + Mutex animation pattern for `setLightingPreset`
 - Hand-off branch: `main` (Phase Final at this commit).

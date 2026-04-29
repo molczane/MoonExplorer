@@ -132,18 +132,18 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T400+
 
 ## Phase Final: Polish + tests + docs
 
-- [ ] **T450** Run `:shared:testAndroidHostTest :shared:iosSimulatorArm64Test` — all suites green
+- [x] **T450** Run `:shared:testAndroidHostTest :shared:iosSimulatorArm64Test` — **99 tests across 11 suites green** on Android JVM + iOS simulator-arm64. New since 03-flyto's 79: `LightingPresetsTest` (5), `MoonMathTest` (+10), `MoonExplorerActionsImplTest` (+5 net: -1 stub, +6 animation cases) → +20 net.
   - All carryover tests + new `LightingPresetsTest` + extended `MoonMathTest` + extended `MoonExplorerActionsImplTest` pass on Android JVM + iOS simulator-arm64.
   - Expected counts: `LightingPresetsTest` (+4), `MoonMathTest` (+9), `MoonExplorerActionsImplTest` (+5 net: -1 stub, +6 animation cases). Roughly **+18 cases over 03-sites-and-flyto's 79**, target ~97 tests across 11 suites.
   - _Requirements: SC-007_
 
-- [ ] **T451** [P] Write `ai-docs/specs/04-sun-control/results.md`
+- [x] **T451** [P] Write `ai-docs/specs/04-sun-control/results.md` — status by phase, acceptance criteria with test pointers, full per-suite test count table (mirrors 03's), deviations log (ADR-0005 amendment / lat/lon lerp not slerp / world-space joystick / `setSunDirection` snap-only), and pending-hardware checklist (joystick gesture vs viewport pan, preset transition feel, mid-animation tap redirect, concurrent fly-to + sun preset).
   - Status by phase; user-confirmed items vs pending hardware confirmation (60 FPS during animation; joystick gesture-vs-pan disambiguation; preset transition feel; mid-animation interruption snappiness).
   - Test counts table (mirrors 03's results.md format).
   - Deviations log: ADR-0005 amendment (durationMs default arg); world-space joystick (not camera-space) for v1; lat/lon lerp instead of slerp.
   - _Requirements: agent-runbook.md_
 
-- [ ] **T452** [P] Cross-reference notes in 01 + 03 results
+- [x] **T452** [P] Cross-reference notes in 01 + 03 results — 01-shell `results.md`: SC-005 row updated with the ADR-0005 `durationMs` amendment note + the `setLightingPreset` deferral line struck through with a "Resolved 2026-04-29 by `04-sun-control`" pointer (matches the pattern 03 used for the snap-to deferral). 03-flyto `results.md` § References: added `../04-sun-control/results.md` as the successor-spec link with a one-line note that 04 reuses 03's animation pattern.
   - 01-shell `results.md` § Deviations / deferrals — strike through the `setLightingPreset` deferral note and point at `04-sun-control/results.md` (mirrors 03's pattern when it resolved 01's snap-to placeholder).
   - 03-flyto `results.md` § References — add `../04-sun-control/results.md` as the next-spec link.
   - _Requirements: agent-runbook.md_
