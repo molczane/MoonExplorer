@@ -52,16 +52,13 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T500+
 
 ## Phase 3: Accent application
 
-- [ ] **T520** [US3] `LightingPresetRow` buttons → warm amber
-  - Override `FilledTonalButton`'s `colors` with `containerColor = MaterialTheme.colorScheme.secondaryContainer` and `contentColor = MaterialTheme.colorScheme.onSecondaryContainer`. Per-button via the existing `PresetButton` private composable in `LightingPresetRow.kt`.
+- [x] **T520** [US3] `LightingPresetRow` buttons → warm amber — `PresetButton` overrides `FilledTonalButton.colors` with `containerColor = colorScheme.secondaryContainer` and `contentColor = colorScheme.onSecondaryContainer`. Sun-control surface is now visually distinguishable from the cool-blue rest of the UI.
   - _Requirements: FR-007_
 
-- [ ] **T521** [P] [US3] `MarkerOverlay` highlighted accent — verify (no code change)
-  - `MarkerDot` already reads `MaterialTheme.colorScheme.primary` for the highlighted fill. Under the new theme this auto-resolves to `MoonBlue` (cool blue). Verify behaviour with a quick on-simulator launch + `actions.highlightLocation("tycho")` from a debug menu (or via the test path).
+- [x] **T521** [P] [US3] `MarkerOverlay` highlighted accent — auto-applied via theme. **No code change** in `MarkerOverlay.kt`. `MarkerDot`'s existing `MaterialTheme.colorScheme.primary` reference resolves to `MoonBlue` under the new theme; the cool-blue accent is automatic. Hardware verification (highlight a marker, confirm cool-blue fill) deferred to T541.
   - _Requirements: FR-008_
 
-- [ ] **T522** [US3] Refresh About icon in `MoonExplorerScreen`
-  - Replace the `Text(text = "ⓘ", ...)` glyph with `Icon(imageVector = Icons.Outlined.Info, contentDescription = "About", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(28.dp))`. Adds an import from `androidx.compose.material.icons.outlined`.
+- [x] **T522** [US3] Refresh About icon — **hand-drawn Compose Canvas icon** instead of a Material Icons import. JetBrains Compose 1.10.x dropped standalone `material-icons-core` / `material-icons-extended` artifacts (the published artifact `org.jetbrains.compose.material:material-icons-core:1.10.3` doesn't exist; verified via gradle resolution failure). New `ui/AboutIcon.kt` (~50 lines) draws an outlined ring + lower-case "i" using `Canvas` primitives — scales cleanly with size, accepts a `tint: Color` that callers pass from `MaterialTheme.colorScheme.onBackground`. `MoonExplorerScreen`'s About button swapped to `AboutIcon(tint, Modifier.size(28.dp))`.
   - _Requirements: FR-009_
 
 **Checkpoint**: tap a sun preset → button is amber; highlight a marker → marker is cool blue; About icon is a stroke-style "i" instead of a Unicode glyph.

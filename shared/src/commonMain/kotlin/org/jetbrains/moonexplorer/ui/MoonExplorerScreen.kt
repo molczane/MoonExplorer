@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -199,11 +201,12 @@ private fun MoonExplorerScreenContent(
                 .statusBarsPadding()
                 .padding(8.dp),
         ) {
-            Text(
-                text = "ⓘ",
-                color = Color.White,
-                fontSize = 28.sp,
-                textAlign = TextAlign.Center,
+            // T522 / 05-modern-theme — hand-drawn info icon (CMP 1.10 dropped the
+            // standalone material-icons artifacts). Tint pulls from the theme's
+            // onBackground so the icon adopts the `Bone` colour automatically.
+            AboutIcon(
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(28.dp),
             )
         }
         SearchBar(

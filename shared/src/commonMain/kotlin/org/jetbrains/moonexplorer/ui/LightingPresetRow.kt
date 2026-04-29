@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -51,8 +53,15 @@ private fun PresetButton(
     label: String,
     onTap: (LightingPreset) -> Unit,
 ) {
+    // T520 / 05-modern-theme — override the FilledTonalButton's container colour from
+    // the theme's surface tone to `secondaryContainer` (warm amber). Visually distinguishes
+    // sun-control surfaces from the cool-blue rest of the UI without screaming about it.
     FilledTonalButton(
         onClick = { onTap(preset) },
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
         modifier = Modifier
             .width(PRESET_BUTTON_WIDTH_DP)
             .height(PRESET_BUTTON_HEIGHT_DP),
