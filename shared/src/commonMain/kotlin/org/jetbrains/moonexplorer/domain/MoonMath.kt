@@ -6,6 +6,7 @@ import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Selenographic ↔ 3D Cartesian conversions and orbit-camera helpers.
@@ -79,3 +80,38 @@ fun cameraUpVector(pitchRad: Float): Vec3 = if (abs(pitchRad) > PITCH_LIMIT_RAD 
 } else {
     Vec3.UP
 }
+
+/**
+ * Selenographic (lat°, lon°) → (yawRad, pitchRad) that puts the site at the camera's view
+ * centre. T211a / 01-app-shell — used by `MoonExplorerActionsImpl.flyToMoonLocation`.
+ *
+ * Derivation: the camera looks at the origin from `cameraPosition(yaw, pitch, dist)` =
+ * `dist * (cos(p) sin(y), sin(p), cos(p) cos(y))`, which is `dist * latLonToCartesian(p, y)`
+ * with `p = pitch_rad`, `y = yaw_rad`. So a site at (lat°, lon°) sits at the centre of the
+ * view iff `pitch = lat` and `yaw = lon` (both in radians).
+ */
+fun latLonToYawPitch(latDeg: Double, lonDeg: Double): Pair<Float, Float> =
+    (lonDeg.toFloat() * DEG_TO_RAD) to (latDeg.toFloat() * DEG_TO_RAD)
+
+/** Inverse of [latLonToYawPitch]. Returns `(latDeg, lonDeg)` as Doubles for the action API. */
+fun yawPitchToLatLon(yawRad: Float, pitchRad: Float): Pair<Double, Double> =
+    (pitchRad.toDouble() * RAD_TO_DEG.toDouble()) to (yawRad.toDouble() * RAD_TO_DEG.toDouble())
+
+/**
+ * Great-circle distance between two selenographic points on the Moon's surface, in
+ * kilometres. Haversine formula on a sphere of radius 1737.4 km (IAU mean lunar radius).
+ */
+fun greatCircleDistKm(lat1Deg: Double, lon1Deg: Double, lat2Deg: Double, lon2Deg: Double): Double {
+    val phi1 = lat1Deg * PI / 180.0
+    val phi2 = lat2Deg * PI / 180.0
+    val dPhi = (lat2Deg - lat1Deg) * PI / 180.0
+    val dLambda = (lon2Deg - lon1Deg) * PI / 180.0
+    val sinHalfPhi = sin(dPhi * 0.5)
+    val sinHalfLambda = sin(dLambda * 0.5)
+    val a = sinHalfPhi * sinHalfPhi + cos(phi1) * cos(phi2) * sinHalfLambda * sinHalfLambda
+    val c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
+    return MOON_RADIUS_KM * c
+}
+
+/** IAU mean lunar radius. */
+const val MOON_RADIUS_KM: Double = 1737.4

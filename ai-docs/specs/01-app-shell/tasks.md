@@ -45,12 +45,12 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T200+
 
 ## Phase 2: Action surface (ADR-0005)
 
-- [ ] **T210** Implement `actions/MoonExplorerActions.kt` in commonMain — interface + supporting types
+- [x] **T210** Implement `actions/MoonExplorerActions.kt` in commonMain — interface + supporting types
   - Eight methods verbatim from ADR-0005: `searchMoonLocations`, `getCurrentView`, `explainCurrentView`, `flyToMoonLocation`, `setLightingPreset`, `setSunDirection`, `highlightLocation`, `compareLocations`.
   - `@Serializable` data classes: `CurrentView`, `ActionAck`, `ComparisonResult`. `enum class LightingPreset { Day, Night, Terminator, HighContrast }`.
   - _Requirements: FR-005, FR-007, SC-005_
 
-- [ ] **T211** Implement `actions/MoonExplorerActionsImpl.kt` in commonMain
+- [x] **T211** Implement `actions/MoonExplorerActionsImpl.kt` in commonMain
   - `class MoonExplorerActionsImpl(viewModel: MoonViewModel, catalog: SiteCatalog) : MoonExplorerActions`.
   - `private val mutex = Mutex()`. Side-effecting methods wrap with `mutex.withLock { ... }`.
   - `searchMoonLocations` → `catalog.search`.
@@ -63,13 +63,13 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T200+
   - `compareLocations(...)` → `ComparisonResult(a, b, distanceKm, notes = "compare deferred")` with the geodesic distance computed (cheap; Math is already there).
   - _Requirements: FR-002, FR-004, FR-005, FR-007_
 
-- [ ] **T211a** [P] Add `MoonMath.latLonToYawPitch` and `yawPitchToLatLon` in commonMain
+- [x] **T211a** [P] Add `MoonMath.latLonToYawPitch` and `yawPitchToLatLon` in commonMain — also added `greatCircleDistKm` (haversine on the IAU mean lunar radius) for `compareLocations`.
   - Forward: given site lat/lon and the camera at unit distance facing the origin, compute (yawRad, pitchRad) that puts the site at the camera centre.
   - Inverse: given (yawRad, pitchRad), return (lat, lon) of the point at the camera centre.
   - Both are ~5-line trig functions; covered by the convention in ADR-0006.
   - _Requirements: FR-004, supporting T211_
 
-- [ ] **T212** [P] `commonTest`: `MoonExplorerActionsImplTest`
+- [x] **T212** [P] `commonTest`: `MoonExplorerActionsImplTest`
   - Construct against a real `MoonViewModel` + `SiteCatalog`.
   - `searchMoonLocations("tych")` → contains Tycho.
   - `flyToMoonLocation("tycho")` → `viewModel.state.value.cameraYawRad/Pitch` advance to expected values (compare with `latLonToYawPitch(tycho.lat, tycho.lon)`).
@@ -115,7 +115,7 @@ All paths relative to `MoonExplorer/` repo root. Task IDs are namespaced **T200+
   - All side-effecting interactions (search, info-sheet "Center", settings open) call through `MoonExplorerActions`. Continuous gestures (drag/pinch) keep calling `viewModel` directly per FR-005.
   - _Requirements: FR-002, FR-003, FR-004, FR-005, FR-006_
 
-- [ ] **T225** Add `MoonViewModel.setCameraTarget(yawRad, pitchRad)` (small extension)
+- [x] **T225** Add `MoonViewModel.setCameraTarget(yawRad, pitchRad)` (small extension) — moved up from Phase 3 since it's a hard dependency of T211. Pure state update; pitch clamped to ±PITCH_LIMIT_RAD to match the gesture handler.
   - Pure state update; doesn't touch distance / sun / textureSet.
   - _Requirements: FR-004, supporting T211_
 

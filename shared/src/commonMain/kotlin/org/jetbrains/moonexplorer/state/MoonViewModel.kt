@@ -59,6 +59,25 @@ class MoonViewModel(initial: MoonRenderState = MoonRenderState()) {
     }
 
     /**
+     * Snap the orbit camera to a target (yaw, pitch) without touching distance, sun
+     * direction, or texture set. T225 / 01-app-shell — invoked by
+     * `MoonExplorerActionsImpl.flyToMoonLocation` once it resolves a site's lat/lon to
+     * (yaw, pitch) via `MoonMath.latLonToYawPitch`. Animated transitions are
+     * `03-sites-and-flyto`'s job; this is the snap path.
+     *
+     * Pitch is clamped to ±PITCH_LIMIT_RAD to match the gesture handler — keeps lookAt's
+     * up-vector cross product well-defined near the poles.
+     */
+    fun setCameraTarget(yawRad: Float, pitchRad: Float) {
+        _state.update { s ->
+            s.copy(
+                cameraYawRad = yawRad,
+                cameraPitchRad = pitchRad.coerceIn(-PITCH_LIMIT_RAD, PITCH_LIMIT_RAD),
+            )
+        }
+    }
+
+    /**
      * Pushes a new [TextureSet] for the renderer to bind on its next frame (T114). The
      * loader (T117) drives this through `Placeholder → Bundled2K → Hd8K` over the
      * lifetime of a launch.
