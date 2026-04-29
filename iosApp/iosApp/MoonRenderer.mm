@@ -221,7 +221,7 @@ Texture* uploadKtx2Texture(Engine& engine, NSData* ktx2, BOOL srgb) {
         reader.requestFormat(Texture::InternalFormat::SRGB8_ALPHA8_ASTC_8x8);
         reader.requestFormat(Texture::InternalFormat::SRGB8_ALPHA8_ASTC_6x6);
         reader.requestFormat(Texture::InternalFormat::SRGB8_ALPHA8_ASTC_4x4);
-        reader.requestFormat(Texture::InternalFormat::ETC2_SRGB8_A8);
+        reader.requestFormat(Texture::InternalFormat::ETC2_EAC_SRGBA8);
         reader.requestFormat(Texture::InternalFormat::SRGB8_A8);
     } else {
         reader.requestFormat(Texture::InternalFormat::RGBA_ASTC_8x8);
