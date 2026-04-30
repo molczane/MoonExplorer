@@ -35,9 +35,14 @@ fun MoonExplorerTheme(content: @Composable () -> Unit) {
  * Themed `ModalBottomSheet` wrapper. T510 / 05-modern-theme.
  *
  * Bakes the modern-theme defaults into one helper so `AboutSheet`, `SettingsSheet`, and
- * `LocationInfoSheet` don't repeat the three parameter overrides:
+ * `LocationInfoSheet` don't repeat the parameter overrides:
  *   * `containerColor` — `surface.copy(alpha = SHEET_CONTAINER_ALPHA)` — translucent dark
  *     "glass" surface that lets the scrim-dimmed Moon read faintly through.
+ *   * `contentColor` — `colorScheme.onSurface` (light `Bone`). **Explicit override is
+ *     load-bearing**: when `containerColor` is alpha-modified it no longer exact-matches
+ *     any `colorScheme` slot, so the default `contentColorFor(containerColor)` returns
+ *     `Color.Unspecified` and Text without an explicit colour renders black/invisible
+ *     against the dark surface. Passing `onSurface` explicitly restores readable text.
  *   * `scrimColor` — `colorScheme.scrim` (alpha 0.8 black) — tuned darker than Material's
  *     default ~0.32 so the Moon stays as a faint silhouette behind the sheet, not a
  *     distracting glare.
@@ -61,6 +66,7 @@ fun MoonModalBottomSheet(
         containerColor = MaterialTheme.colorScheme.surface.copy(
             alpha = MoonColors.SHEET_CONTAINER_ALPHA,
         ),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         scrimColor = MaterialTheme.colorScheme.scrim,
         shape = MaterialTheme.shapes.extraLarge,
         modifier = modifier,
